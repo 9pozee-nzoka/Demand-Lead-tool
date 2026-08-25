@@ -25,3 +25,4 @@ export * from './lead.models';
 export * from './crm.models';
 export * from './alert.models';
 export * from './dashboard.models';
+export * from './landing-page.models';

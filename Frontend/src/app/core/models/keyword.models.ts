@@ -26,6 +26,9 @@ export interface KeywordMeasurement {
   competition?: number;
   cpc?: number;
   geo?: string;
+  trend_state?: TrendState;
+  raw_data?: Record<string, unknown>;
+  keyword?: { id: number; keyword: string; intent: string; project_id: number };
 }
 
 export interface Keyword {

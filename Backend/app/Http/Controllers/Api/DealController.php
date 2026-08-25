@@ -20,6 +20,19 @@ class DealController extends Controller
         return response()->json($deals);
     }
 
+    public function show(Request $request, Deal $deal): JsonResponse
+    {
+        $this->authorizeDeal($request, $deal);
+        return response()->json($deal->load(['lead', 'contact', 'assignedUser', 'tasks', 'notes']));
+    }
+
+    public function destroy(Request $request, Deal $deal): JsonResponse
+    {
+        $this->authorizeDeal($request, $deal);
+        $deal->delete();
+        return response()->json(['message' => 'Deal deleted.']);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

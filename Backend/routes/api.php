@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DealController;
 use App\Http\Controllers\Api\KeywordController;
+use App\Http\Controllers\Api\LandingPageController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\NoteController;
 use App\Http\Controllers\Api\OpportunityController;
@@ -35,6 +36,11 @@ Route::prefix('v1')->group(function () {
         Route::post('forgot-password',[AuthController::class, 'forgotPassword'])->name('password.forgot');
         Route::post('reset-password', [AuthController::class, 'resetPassword'])->name('password.reset');
     });
+
+    // -----------------------------------------------------------------------
+    // Public — Lead Capture (no auth)
+    // -----------------------------------------------------------------------
+    Route::post('v1/capture/{slug}', [LandingPageController::class, 'capture'])->name('capture');
 
     // -----------------------------------------------------------------------
     // Authenticated
@@ -111,24 +117,32 @@ Route::prefix('v1')->group(function () {
 
         // CRM
         Route::prefix('deals')->name('deals.')->group(function () {
-            Route::get('/',         [DealController::class, 'index'])->name('index');
-            Route::post('/',        [DealController::class, 'store'])->name('store');
-            Route::patch('/{deal}', [DealController::class, 'update'])->name('update');
+            Route::get('/',          [DealController::class, 'index'])->name('index');
+            Route::post('/',         [DealController::class, 'store'])->name('store');
+            Route::get('/{deal}',    [DealController::class, 'show'])->name('show');
+            Route::patch('/{deal}',  [DealController::class, 'update'])->name('update');
+            Route::delete('/{deal}', [DealController::class, 'destroy'])->name('destroy');
         });
 
         Route::prefix('tasks')->name('tasks.')->group(function () {
-            Route::get('/',  [TaskController::class, 'index'])->name('index');
-            Route::post('/', [TaskController::class, 'store'])->name('store');
+            Route::get('/',          [TaskController::class, 'index'])->name('index');
+            Route::post('/',         [TaskController::class, 'store'])->name('store');
+            Route::patch('/{task}',  [TaskController::class, 'update'])->name('update');
+            Route::delete('/{task}', [TaskController::class, 'destroy'])->name('destroy');
         });
 
         Route::prefix('notes')->name('notes.')->group(function () {
-            Route::get('/',  [NoteController::class, 'index'])->name('index');
-            Route::post('/', [NoteController::class, 'store'])->name('store');
+            Route::get('/',          [NoteController::class, 'index'])->name('index');
+            Route::post('/',         [NoteController::class, 'store'])->name('store');
+            Route::patch('/{note}',  [NoteController::class, 'update'])->name('update');
+            Route::delete('/{note}', [NoteController::class, 'destroy'])->name('destroy');
         });
 
         // Alerts
         Route::prefix('alerts')->name('alerts.')->group(function () {
-            Route::get('/', [AlertController::class, 'index'])->name('index');
+            Route::get('/',                        [AlertController::class, 'index'])->name('index');
+            Route::patch('/{alert}/read',          [AlertController::class, 'markRead'])->name('read');
+            Route::post('/read-all',               [AlertController::class, 'markAllRead'])->name('read-all');
         });
 
         Route::prefix('alert-rules')->name('alert-rules.')->group(function () {
@@ -136,6 +150,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/',             [AlertController::class, 'storeRule'])->name('store');
             Route::patch('/{alertRule}', [AlertController::class, 'updateRule'])->name('update');
             Route::delete('/{alertRule}',[AlertController::class, 'destroyRule'])->name('destroy');
+        });
+
+        // Landing Pages
+        Route::prefix('landing-pages')->name('landing-pages.')->group(function () {
+            Route::get('/',                   [LandingPageController::class, 'index'])->name('index');
+            Route::post('/',                  [LandingPageController::class, 'store'])->name('store');
+            Route::get('/{landingPage}',      [LandingPageController::class, 'show'])->name('show');
+            Route::patch('/{landingPage}',    [LandingPageController::class, 'update'])->name('update');
+            Route::delete('/{landingPage}',   [LandingPageController::class, 'destroy'])->name('destroy');
         });
 
         // Dashboard

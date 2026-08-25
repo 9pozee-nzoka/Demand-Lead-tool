@@ -1,0 +1,357 @@
+<app-page-header title="CRM Pipeline" subtitle="Track deals from new lead to closed revenue">
+  <div class="crm-header-actions">
+    <div class="view-toggle">
+      <button class="btn btn--ghost btn--sm" [class.btn--active]="view()==='pipeline'" (click)="view.set('pipeline')">
+        <span class="material-symbols-rounded">view_kanban</span> Pipeline
+      </button>
+      <button class="btn btn--ghost btn--sm" [class.btn--active]="view()==='list'" (click)="view.set('list')">
+        <span class="material-symbols-rounded">list</span> List
+      </button>
+    </div>
+    <button class="btn btn--primary" (click)="openCreateDeal()">
+      <span class="material-symbols-rounded">add</span> New deal
+    </button>
+  </div>
+</app-page-header>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (deals().length === 0) {
+  <app-empty-state icon="business_center" title="No deals yet"
+    message="Convert a qualified lead or create a deal manually to start tracking revenue." >
+    <button class="btn btn--primary" style="margin-top:16px" (click)="openCreateDeal()">
+      <span class="material-symbols-rounded">add</span> Create first deal
+    </button>
+  </app-empty-state>
+} @else {
+
+  <!-- ── Pipeline view ── -->
+  @if (view() === 'pipeline') {
+    <div class="pipeline">
+      @for (stage of stages; track stage) {
+        <div class="pipeline__col"
+          [class.pipeline__col--over]="dragOverStage() === stage"
+          (dragover)="onDragOver(stage, $event)"
+          (dragleave)="onDragLeave()"
+          (drop)="onDrop(stage, $event)">
+
+          <div class="pipeline__col-header">
+            <div class="pipeline__col-title-row">
+              <span class="pipeline__col-title">{{ stage | titlecase }}</span>
+              <span class="pipeline__col-count">{{ dealsByStage()[stage].length }}</span>
+            </div>
+            @if (stageRevenue(stage) > 0) {
+              <span class="pipeline__col-revenue">{{ stageRevenue(stage) | currencyKe }}</span>
+            }
+          </div>
+
+          <div class="pipeline__cards">
+            @for (deal of dealsByStage()[stage]; track deal.id) {
+              <div class="deal-card"
+                draggable="true"
+                [class.deal-card--won]="deal.stage === 'won'"
+                [class.deal-card--lost]="deal.stage === 'lost'"
+                (dragstart)="onDragStart(deal.id)"
+                (click)="openDeal(deal)">
+
+                <div class="deal-card__title">{{ deal.title }}</div>
+
+                @if (deal.value) {
+                  <div class="deal-card__value">{{ deal.value | currencyKe }}</div>
+                }
+
+                <div class="deal-card__meta">
+                  @if (deal.assigned_user) {
+                    <span class="deal-card__assignee">
+                      <span class="deal-card__avatar">{{ deal.assigned_user.name[0] }}</span>
+                    </span>
+                  }
+                  @if (deal.expected_close_at) {
+                    <span class="deal-card__close text-xs">
+                      <span class="material-symbols-rounded">event</span>
+                      {{ deal.expected_close_at | date:'MMM d' }}
+                    </span>
+                  }
+                </div>
+              </div>
+            }
+
+            @if (dealsByStage()[stage].length === 0) {
+              <div class="pipeline__col-empty">Drop deals here</div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ── List view ── -->
+  @if (view() === 'list') {
+    <div class="table-wrap card" style="padding:0">
+      <table class="data-table">
+        <thead>
+          <tr><th>Deal</th><th>Value</th><th>Stage</th><th>Assigned</th><th>Close date</th><th></th></tr>
+        </thead>
+        <tbody>
+          @for (deal of deals(); track deal.id) {
+            <tr (click)="openDeal(deal)" style="cursor:pointer">
+              <td class="font-medium">{{ deal.title }}</td>
+              <td>{{ deal.value | currencyKe }}</td>
+              <td><app-badge [variant]="stageVariant(deal.stage)">{{ deal.stage }}</app-badge></td>
+              <td class="text-sm">{{ deal.assigned_user?.name ?? '—' }}</td>
+              <td class="text-sm text-muted">
+                {{ deal.expected_close_at ? (deal.expected_close_at | date:'MMM d, y') : '—' }}
+              </td>
+              <td class="table-actions" (click)="$event.stopPropagation()">
+                <button class="icon-btn icon-btn--danger" (click)="confirmDeleteDeal(deal.id)" title="Delete">
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}
+
+<!-- ── Deal drawer ── -->
+@if (activeDeal()) {
+  <div class="drawer-backdrop" (click)="activeDeal.set(null)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="Deal details">
+
+      <div class="drawer__header">
+        <div class="drawer__header-body">
+          <h2 class="drawer__title">{{ activeDeal()!.title }}</h2>
+          @if (activeDeal()!.value) {
+            <span class="drawer__value">{{ activeDeal()!.value | currencyKe }}</span>
+          }
+        </div>
+        <button class="icon-btn" (click)="activeDeal.set(null)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Stage pipeline strip -->
+      <div class="deal-stages">
+        @for (s of stages; track s) {
+          <button class="deal-stage-btn"
+            [class.deal-stage-btn--active]="activeDeal()!.stage === s"
+            [class.deal-stage-btn--won]="s === 'won'"
+            [class.deal-stage-btn--lost]="s === 'lost'"
+            (click)="updateDealStage(s)">
+            {{ s | titlecase }}
+          </button>
+        }
+      </div>
+
+      <!-- Drawer tabs -->
+      <div class="drawer-tabs">
+        @for (t of [{key:'details',icon:'info'},{key:'tasks',icon:'task_alt'},{key:'notes',icon:'notes'}]; track t.key) {
+          <button class="drawer-tab" [class.drawer-tab--active]="drawerTab()===t.key"
+            (click)="setDrawerTab(t.key)">
+            <span class="material-symbols-rounded">{{ t.icon }}</span>
+            {{ t.key | titlecase }}
+            @if (t.key === 'tasks' && dealTasks().length > 0) {
+              <span class="drawer-tab__badge">{{ dealTasks().length }}</span>
+            }
+            @if (t.key === 'notes' && dealNotes().length > 0) {
+              <span class="drawer-tab__badge">{{ dealNotes().length }}</span>
+            }
+          </button>
+        }
+      </div>
+
+      <div class="drawer__body">
+
+        <!-- Details tab -->
+        @if (drawerTab() === 'details') {
+          <div class="deal-details">
+            <div class="deal-detail-row">
+              <span class="deal-detail-label">Stage</span>
+              <app-badge [variant]="stageVariant(activeDeal()!.stage)">{{ activeDeal()!.stage }}</app-badge>
+            </div>
+            @if (activeDeal()!.lead) {
+              <div class="deal-detail-row">
+                <span class="deal-detail-label">Lead</span>
+                <span>{{ activeDeal()!.lead!.name ?? 'Lead #' + activeDeal()!.lead!.id }}</span>
+              </div>
+            }
+            @if (activeDeal()!.assigned_user) {
+              <div class="deal-detail-row">
+                <span class="deal-detail-label">Assigned to</span>
+                <span>{{ activeDeal()!.assigned_user!.name }}</span>
+              </div>
+            }
+            @if (activeDeal()!.expected_close_at) {
+              <div class="deal-detail-row">
+                <span class="deal-detail-label">Expected close</span>
+                <span>{{ activeDeal()!.expected_close_at | date:'MMMM d, y' }}</span>
+              </div>
+            }
+            @if (activeDeal()!.won_at) {
+              <div class="deal-detail-row">
+                <span class="deal-detail-label">Won at</span>
+                <span class="text-success">{{ activeDeal()!.won_at | date:'MMMM d, y' }}</span>
+              </div>
+            }
+            <div class="deal-detail-row">
+              <span class="deal-detail-label">Created</span>
+              <span>{{ activeDeal()!.created_at | timeAgo }}</span>
+            </div>
+
+            <!-- Quick close actions -->
+            @if (activeDeal()!.stage !== 'won' && activeDeal()!.stage !== 'lost') {
+              <div class="deal-close-actions">
+                <button class="btn btn--primary btn--sm" (click)="closeDeal('won')">
+                  <span class="material-symbols-rounded">check_circle</span> Mark Won
+                </button>
+                <button class="btn btn--danger btn--sm" (click)="closeDeal('lost')">
+                  <span class="material-symbols-rounded">cancel</span> Mark Lost
+                </button>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Tasks tab -->
+        @if (drawerTab() === 'tasks') {
+          <div class="tasks-section">
+            <!-- Add task form -->
+            <form [formGroup]="taskForm" (ngSubmit)="addTask()" class="task-form">
+              <input class="form-input task-form__input" formControlName="title"
+                placeholder="Add a task…" />
+              <select class="form-input task-form__type" formControlName="type">
+                @for (type of ['call','email','meeting','follow_up','other']; track type) {
+                  <option [value]="type">{{ type | titlecase }}</option>
+                }
+              </select>
+              <input class="form-input task-form__date" type="date" formControlName="due_at" />
+              <button type="submit" class="btn btn--primary btn--sm" [disabled]="savingTask()">
+                <span class="material-symbols-rounded">add</span>
+              </button>
+            </form>
+
+            @if (dealTasks().length === 0) {
+              <div class="drawer-empty">No tasks yet. Add one above.</div>
+            } @else {
+              <div class="task-list">
+                @for (task of dealTasks(); track task.id) {
+                  <div class="task-item" [class.task-item--done]="task.status==='completed'">
+                    <button class="task-item__check" (click)="completeTask(task)"
+                      [disabled]="task.status==='completed'"
+                      [title]="task.status==='completed' ? 'Completed' : 'Mark complete'">
+                      <span class="material-symbols-rounded">
+                        {{ task.status === 'completed' ? 'check_circle' : 'radio_button_unchecked' }}
+                      </span>
+                    </button>
+                    <span class="task-item__icon material-symbols-rounded">{{ taskTypeIcon(task.type) }}</span>
+                    <div class="task-item__body">
+                      <span class="task-item__title">{{ task.title }}</span>
+                      @if (task.due_at) {
+                        <span class="task-item__due text-xs text-muted">Due {{ task.due_at | date:'MMM d' }}</span>
+                      }
+                    </div>
+                    <button class="icon-btn icon-btn--danger task-item__del" (click)="deleteTask(task.id)">
+                      <span class="material-symbols-rounded">close</span>
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Notes tab -->
+        @if (drawerTab() === 'notes') {
+          <div class="notes-section">
+            <!-- Add note -->
+            <div class="note-compose">
+              <textarea class="form-input note-compose__input" rows="3"
+                [ngModel]="noteBody()" (ngModelChange)="noteBody.set($event)"
+                placeholder="Write a note…"></textarea>
+              <button class="btn btn--primary btn--sm note-compose__btn"
+                [disabled]="!noteBody().trim() || savingNote()"
+                (click)="addNote()">
+                <span class="material-symbols-rounded">send</span> Add note
+              </button>
+            </div>
+
+            @if (dealNotes().length === 0) {
+              <div class="drawer-empty">No notes yet.</div>
+            } @else {
+              <div class="note-list">
+                @for (note of dealNotes(); track note.id) {
+                  <div class="note-item">
+                    <div class="note-item__header">
+                      <span class="note-item__author">{{ note.user?.name ?? 'You' }}</span>
+                      <span class="note-item__time text-xs text-muted">{{ note.created_at | timeAgo }}</span>
+                      <button class="icon-btn icon-btn--danger note-item__del" (click)="deleteNote(note.id)">
+                        <span class="material-symbols-rounded">delete</span>
+                      </button>
+                    </div>
+                    <p class="note-item__body">{{ note.body }}</p>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+
+      </div>
+    </div>
+  </div>
+}
+
+<!-- New deal form drawer -->
+@if (showDealForm()) {
+  <div class="drawer-backdrop" (click)="showDealForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="New deal">
+      <div class="drawer__header">
+        <h2 class="drawer__title">New deal</h2>
+        <button class="icon-btn" (click)="showDealForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <form [formGroup]="dealForm" (ngSubmit)="saveDeal()" novalidate class="drawer__body">
+        <div class="form-field">
+          <label class="form-label" for="deal_title">Deal title <span class="required">*</span></label>
+          <input id="deal_title" type="text" class="form-input" formControlName="title"
+            placeholder="e.g. Solar Installation — Acme Ltd" />
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="deal_value">Value (KES)</label>
+            <input id="deal_value" type="number" class="form-input" formControlName="value" min="0" placeholder="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="deal_stage">Stage</label>
+            <select id="deal_stage" class="form-input" formControlName="stage">
+              @for (s of stages; track s) {
+                <option [value]="s">{{ s | titlecase }}</option>
+              }
+            </select>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="deal_close">Expected close</label>
+          <input id="deal_close" type="date" class="form-input" formControlName="expected_close_at" />
+        </div>
+        <div class="drawer__footer">
+          <button type="button" class="btn btn--ghost" (click)="showDealForm.set(false)">Cancel</button>
+          <button type="submit" class="btn btn--primary" [disabled]="savingDeal()">
+            @if (savingDeal()) { <span class="btn__spinner"></span> Saving… }
+            @else { Create deal }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Delete confirm -->
+@if (deleteDealId()) {
+  <app-confirm-modal title="Delete deal?" message="This will permanently delete the deal and its tasks."
+    confirmLabel="Delete" [danger]="true"
+    (confirmed)="removeDeal()" (cancelled)="deleteDealId.set(null)" />
+}

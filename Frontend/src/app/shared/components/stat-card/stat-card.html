@@ -1,0 +1,21 @@
+<div class="stat-card" [class]="'stat-card--' + color()">
+  @if (loading()) {
+    <div class="stat-card__skeleton"></div>
+  } @else {
+    <div class="stat-card__icon-wrap">
+      <span class="stat-card__icon material-symbols-rounded">{{ icon() }}</span>
+    </div>
+    <div class="stat-card__body">
+      <span class="stat-card__label">{{ label() }}</span>
+      <span class="stat-card__value">{{ value() }}</span>
+      @if (change()) {
+        <div class="stat-card__change" [class]="'stat-card__change--' + trend()">
+          <span class="material-symbols-rounded">
+            {{ trend() === 'up' ? 'arrow_upward' : trend() === 'down' ? 'arrow_downward' : 'remove' }}
+          </span>
+          <span>{{ change() }}</span>
+        </div>
+      }
+    </div>
+  }
+</div>

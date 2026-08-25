@@ -1,0 +1,266 @@
+<app-page-header title="Leads" subtitle="Captured prospects from landing pages, WhatsApp and forms" />
+
+<!-- Score filter tabs -->
+<div class="filter-tabs">
+  @for (tab of [
+    {label:'All',value:'all'}, {label:'🔥 Hot',value:'hot'},
+    {label:'Warm',value:'warm'}, {label:'Potential',value:'potential'}, {label:'Low',value:'low'}
+  ]; track tab.value) {
+    <button class="filter-tab" [class.filter-tab--active]="scoreFilter()===tab.value"
+      (click)="setFilter(tab.value)">{{ tab.label }}</button>
+  }
+</div>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (items().length === 0) {
+  <app-empty-state icon="person_search" title="No leads found"
+    message="Leads are captured from landing pages, WhatsApp, and lead forms." />
+} @else {
+  <div class="table-wrap card" style="padding:0">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Lead</th><th>Score</th><th>Status</th>
+          <th>Source</th><th>Location</th><th>Assigned</th><th>Created</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (lead of items(); track lead.id) {
+          <tr (click)="openLead(lead)" style="cursor:pointer">
+            <td class="lead-name">
+              <span class="lead-name__text">{{ lead.name ?? 'Unknown' }}</span>
+              @if (lead.phone) { <span class="lead-name__phone">{{ lead.phone }}</span> }
+            </td>
+            <td>
+              <div class="lead-score">
+                <app-badge [variant]="scoreBadgeVariant(lead.score_label)">
+                  {{ lead.score_label | uppercase }}
+                </app-badge>
+                <span class="lead-score__num">{{ lead.lead_score | number:'1.0-0' }}</span>
+              </div>
+            </td>
+            <td><app-badge [variant]="statusBadgeVariant(lead.status)">{{ lead.status }}</app-badge></td>
+            <td class="text-sm text-muted">{{ lead.source }}</td>
+            <td class="text-sm">{{ lead.location ?? '—' }}</td>
+            <td class="text-sm">{{ lead.assigned_user?.name ?? '—' }}</td>
+            <td class="text-sm text-muted">{{ lead.created_at | timeAgo }}</td>
+            <td class="table-actions" (click)="$event.stopPropagation()">
+              <button class="icon-btn" title="Open lead" (click)="openLead(lead)">
+                <span class="material-symbols-rounded">chevron_right</span>
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  @if ((page()?.last_page ?? 1) > 1) {
+    <div class="pagination">Page {{ page()?.current_page }} of {{ page()?.last_page }} ({{ page()?.total }} total)</div>
+  }
+}
+
+<!-- ── Lead detail drawer ── -->
+@if (activeLead()) {
+  <div class="drawer-backdrop" (click)="activeLead.set(null); actionPanel.set(null)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="Lead details">
+
+      <div class="drawer__header">
+        <div class="drawer__header-body">
+          <h2 class="drawer__title">{{ activeLead()!.name ?? 'Unknown lead' }}</h2>
+          <div class="drawer__meta">
+            @if (activeLead()!.phone) {
+              <span><span class="material-symbols-rounded">call</span>{{ activeLead()!.phone }}</span>
+            }
+            @if (activeLead()!.email) {
+              <span><span class="material-symbols-rounded">mail</span>{{ activeLead()!.email }}</span>
+            }
+          </div>
+        </div>
+        <app-badge [variant]="scoreBadgeVariant(activeLead()!.score_label)">
+          {{ activeLead()!.score_label | uppercase }} · {{ activeLead()!.lead_score | number:'1.0-0' }}
+        </app-badge>
+        <button class="icon-btn" (click)="activeLead.set(null)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="lead-actions-bar">
+        @if (activeLead()!.status !== 'qualified' && activeLead()!.status !== 'won') {
+          <button class="lead-action-btn" [class.lead-action-btn--active]="actionPanel()==='qualify'"
+            (click)="openAction('qualify')">
+            <span class="material-symbols-rounded">verified</span> Qualify
+          </button>
+        }
+        @if (!activeLead()!.assigned_to) {
+          <button class="lead-action-btn" [class.lead-action-btn--active]="actionPanel()==='assign'"
+            (click)="openAction('assign')">
+            <span class="material-symbols-rounded">assignment_ind</span> Assign
+          </button>
+        }
+        @if (activeLead()!.status !== 'won') {
+          <button class="lead-action-btn lead-action-btn--convert"
+            [class.lead-action-btn--active]="actionPanel()==='convert'"
+            (click)="openAction('convert')">
+            <span class="material-symbols-rounded">monetization_on</span> Convert
+          </button>
+        }
+      </div>
+
+      <!-- ── Qualify panel ── -->
+      @if (actionPanel() === 'qualify') {
+        <div class="action-panel">
+          <h3 class="action-panel__title">
+            <span class="material-symbols-rounded">verified</span> Qualify lead
+          </h3>
+          <form [formGroup]="qualifyForm" (ngSubmit)="qualify()" novalidate>
+            <div class="form-field">
+              <label class="form-label" for="q_summary">Qualification notes <span class="required">*</span></label>
+              <textarea id="q_summary" class="form-input" formControlName="qualification_summary"
+                rows="3" placeholder="What did you learn about their needs, budget and timeline?"></textarea>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="q_score">Override score (0–100)</label>
+              <input id="q_score" type="number" class="form-input" formControlName="lead_score"
+                min="0" max="100" placeholder="Leave blank to keep auto-score" />
+            </div>
+            <div class="action-panel__footer">
+              <button type="button" class="btn btn--ghost btn--sm" (click)="actionPanel.set(null)">Cancel</button>
+              <button type="submit" class="btn btn--primary btn--sm" [disabled]="actioning()">
+                @if (actioning()) { <span class="btn__spinner"></span> } @else { Save qualification }
+              </button>
+            </div>
+          </form>
+        </div>
+      }
+
+      <!-- ── Assign panel ── -->
+      @if (actionPanel() === 'assign') {
+        <div class="action-panel">
+          <h3 class="action-panel__title">
+            <span class="material-symbols-rounded">assignment_ind</span> Assign to team member
+          </h3>
+          <form [formGroup]="assignForm" (ngSubmit)="assign()" novalidate>
+            <div class="form-field">
+              <label class="form-label" for="a_user">Team member <span class="required">*</span></label>
+              <input id="a_user" type="number" class="form-input" formControlName="user_id"
+                placeholder="Enter user ID" />
+              <span class="form-hint">Enter the team member's user ID.</span>
+            </div>
+            <div class="action-panel__footer">
+              <button type="button" class="btn btn--ghost btn--sm" (click)="actionPanel.set(null)">Cancel</button>
+              <button type="submit" class="btn btn--primary btn--sm" [disabled]="actioning()">
+                @if (actioning()) { <span class="btn__spinner"></span> } @else { Assign }
+              </button>
+            </div>
+          </form>
+        </div>
+      }
+
+      <!-- ── Convert panel ── -->
+      @if (actionPanel() === 'convert') {
+        <div class="action-panel action-panel--convert">
+          <h3 class="action-panel__title">
+            <span class="material-symbols-rounded">monetization_on</span> Convert to deal
+          </h3>
+          <form [formGroup]="convertForm" (ngSubmit)="convert()" novalidate>
+            <div class="form-field">
+              <label class="form-label" for="c_title">Deal title</label>
+              <input id="c_title" type="text" class="form-input" formControlName="deal_title"
+                placeholder="Deal title" />
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="c_value">Deal value (KES)</label>
+              <input id="c_value" type="number" class="form-input" formControlName="deal_value"
+                min="0" placeholder="0" />
+            </div>
+            <div class="action-panel__footer">
+              <button type="button" class="btn btn--ghost btn--sm" (click)="actionPanel.set(null)">Cancel</button>
+              <button type="submit" class="btn btn--primary btn--sm" [disabled]="actioning()">
+                @if (actioning()) { <span class="btn__spinner"></span> } @else { Convert to deal }
+              </button>
+            </div>
+          </form>
+        </div>
+      }
+
+      <!-- Lead detail body -->
+      <div class="drawer__body">
+
+        <!-- Lead info -->
+        <div class="lead-info-grid">
+          @if (activeLead()!.company) {
+            <div class="lead-info-item">
+              <span class="material-symbols-rounded">business</span>
+              <div><span class="lead-info-label">Company</span><span>{{ activeLead()!.company }}</span></div>
+            </div>
+          }
+          @if (activeLead()!.location) {
+            <div class="lead-info-item">
+              <span class="material-symbols-rounded">location_on</span>
+              <div><span class="lead-info-label">Location</span><span>{{ activeLead()!.location }}</span></div>
+            </div>
+          }
+          <div class="lead-info-item">
+            <span class="material-symbols-rounded">label</span>
+            <div>
+              <span class="lead-info-label">Source</span>
+              <span>{{ activeLead()!.source }}</span>
+            </div>
+          </div>
+          @if (activeLead()!.assigned_user) {
+            <div class="lead-info-item">
+              <span class="material-symbols-rounded">assignment_ind</span>
+              <div>
+                <span class="lead-info-label">Assigned to</span>
+                <span>{{ activeLead()!.assigned_user!.name }}</span>
+              </div>
+            </div>
+          }
+          @if (activeLead()!.qualified_at) {
+            <div class="lead-info-item">
+              <span class="material-symbols-rounded">verified</span>
+              <div>
+                <span class="lead-info-label">Qualified</span>
+                <span>{{ activeLead()!.qualified_at | date:'MMM d, y' }}</span>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Qualification summary -->
+        @if (activeLead()!.qualification_summary) {
+          <div class="lead-summary">
+            <h4 class="lead-summary__title">
+              <span class="material-symbols-rounded">notes</span> Qualification notes
+            </h4>
+            <p class="lead-summary__text">{{ activeLead()!.qualification_summary }}</p>
+          </div>
+        }
+
+        <!-- Timeline -->
+        @if (activeLead()!.events?.length) {
+          <div class="lead-timeline">
+            <h4 class="lead-timeline__title">Activity</h4>
+            @for (event of activeLead()!.events!; track event.id) {
+              <div class="timeline-item">
+                <div class="timeline-item__dot">
+                  <span class="material-symbols-rounded">{{ eventIcon(event.type) }}</span>
+                </div>
+                <div class="timeline-item__body">
+                  <span class="timeline-item__type">{{ event.type | titlecase }}</span>
+                  <span class="timeline-item__time text-xs text-muted">
+                    {{ event.occurred_at | timeAgo }}
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+      </div>
+    </div>
+  </div>
+}

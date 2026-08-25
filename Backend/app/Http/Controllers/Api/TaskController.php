@@ -12,17 +12,15 @@ class TaskController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Task::where('organization_id', $request->user()->organization_id)
-            ->with(['lead', 'deal', 'assignedUser']);
+        $tasks = Task::where('organization_id', $request->user()->organization_id)
+            ->with(['assignedUser:id,name'])
+            ->when($request->filled('lead_id'), fn ($q) => $q->where('lead_id', $request->lead_id))
+            ->when($request->filled('deal_id'), fn ($q) => $q->where('deal_id', $request->deal_id))
+            ->when($request->filled('status'),  fn ($q) => $q->where('status', $request->status))
+            ->orderBy('due_at')
+            ->paginate(25);
 
-        if ($request->filled('assigned_to')) {
-            $query->where('assigned_user_id', $request->assigned_to);
-        }
-        if ($request->boolean('overdue')) {
-            $query->overdue();
-        }
-
-        return response()->json($query->orderBy('due_at')->paginate(25));
+        return response()->json($tasks);
     }
 
     public function store(Request $request): JsonResponse
@@ -39,9 +37,41 @@ class TaskController extends Controller
 
         $task = Task::create([
             'organization_id' => $request->user()->organization_id,
+            'status'          => 'pending',
             ...$data,
         ]);
 
-        return response()->json($task, 201);
+        return response()->json($task->load('assignedUser'), 201);
+    }
+
+    public function update(Request $request, Task $task): JsonResponse
+    {
+        $this->authorizeTask($request, $task);
+
+        $data = $request->validate([
+            'title'  => ['sometimes', 'string', 'max:255'],
+            'status' => ['sometimes', Rule::in(['pending','in_progress','completed','cancelled'])],
+            'due_at' => ['nullable', 'date'],
+            'type'   => ['sometimes', Rule::in(['call','email','meeting','follow_up','other'])],
+        ]);
+
+        if (($data['status'] ?? null) === 'completed' && ! $task->completed_at) {
+            $data['completed_at'] = now();
+        }
+
+        $task->update($data);
+        return response()->json($task->fresh());
+    }
+
+    public function destroy(Request $request, Task $task): JsonResponse
+    {
+        $this->authorizeTask($request, $task);
+        $task->delete();
+        return response()->json(['message' => 'Task deleted.']);
+    }
+
+    private function authorizeTask(Request $request, Task $task): void
+    {
+        if ((int) $task->organization_id !== (int) $request->user()->organization_id) abort(403);
     }
 }

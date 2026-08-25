@@ -1,0 +1,288 @@
+<app-page-header
+  [title]="currentProject() ? currentProject()!.name + ' — Keywords' : 'Keywords'"
+  subtitle="Track search terms and collect demand signals">
+  @if (projectId()) {
+    <button class="btn btn--primary" (click)="openAdd()">
+      <span class="material-symbols-rounded">add</span> Add keywords
+    </button>
+  }
+</app-page-header>
+
+<!-- Project switcher (shown when no project selected OR as breadcrumb) -->
+@if (projects().length > 0) {
+  <div class="project-switcher">
+    <span class="project-switcher__label">
+      <span class="material-symbols-rounded">folder_open</span> Project:
+    </span>
+    <div class="project-switcher__pills">
+      @for (p of projects(); track p.id) {
+        <button
+          class="project-pill"
+          [class.project-pill--active]="projectId() === p.id"
+          (click)="switchProject(p.id)"
+        >{{ p.name }}</button>
+      }
+    </div>
+  </div>
+}
+
+@if (!projectId()) {
+  <app-empty-state icon="folder_open" title="Select a project"
+    message="Choose a project above to view and manage its keywords." />
+} @else if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else {
+
+  <!-- Stats bar -->
+  <div class="kw-stats">
+    <div class="kw-stat">
+      <span class="kw-stat__val">{{ keywords().length }}</span>
+      <span class="kw-stat__lbl">Total</span>
+    </div>
+    @for (intent of intentOptions; track intent) {
+      @if (intentCounts()[intent]) {
+        <div class="kw-stat">
+          <span class="kw-stat__val">{{ intentCounts()[intent] }}</span>
+          <span class="kw-stat__lbl">{{ intent | titlecase }}</span>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- Toolbar -->
+  <div class="kw-toolbar">
+    <div class="search-input">
+      <span class="material-symbols-rounded search-input__icon">search</span>
+      <input class="form-input search-input__field" [ngModel]="searchQ()"
+        (ngModelChange)="searchQ.set($event)" placeholder="Filter keywords…" />
+    </div>
+    <span class="text-sm text-muted">{{ filtered().length }} keyword{{ filtered().length === 1 ? '' : 's' }}</span>
+  </div>
+
+  @if (filtered().length === 0) {
+    <app-empty-state icon="manage_search" title="No keywords yet"
+      message="Add individual keywords or paste a list to bulk import.">
+      <button class="btn btn--primary" style="margin-top:16px" (click)="openAdd()">
+        <span class="material-symbols-rounded">add</span> Add keywords
+      </button>
+    </app-empty-state>
+  } @else {
+    <div class="table-wrap card" style="padding:0">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Keyword</th>
+            <th>Intent</th>
+            <th>Priority</th>
+            <th>Locations</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (k of filtered(); track k.id) {
+            <tr [class.row--paused]="k.status === 'paused'">
+              <td>
+                <div class="kw-cell">
+                  <span class="kw-cell__text">{{ k.keyword }}</span>
+                  @if (k.category) {
+                    <span class="kw-cell__cat">{{ k.category }}</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <app-badge [variant]="intentVariant(k.intent)">{{ k.intent }}</app-badge>
+              </td>
+              <td>
+                <app-badge [variant]="priorityVariant(k.priority)">{{ k.priority }}</app-badge>
+              </td>
+              <td class="text-sm text-muted">
+                {{ k.locations?.length ?? 0 }}
+                @if (k.locations?.length) {
+                  <span class="location-preview">
+                    ({{ k.locations![0].city ?? k.locations![0].region ?? k.locations![0].country }})
+                  </span>
+                }
+              </td>
+              <td>
+                <button
+                  class="status-toggle"
+                  [class.status-toggle--active]="k.status === 'active'"
+                  (click)="toggleStatus(k)"
+                  [title]="k.status === 'active' ? 'Pause monitoring' : 'Resume monitoring'"
+                >
+                  <span class="status-toggle__dot"></span>
+                  {{ k.status }}
+                </button>
+              </td>
+              <td class="table-actions">
+                <button class="icon-btn" title="Remove keyword" (click)="confirmDelete(k.id, k.keyword)">
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}
+
+<!-- ── Add keywords drawer ── -->
+@if (showForm()) {
+  <div class="drawer-backdrop" (click)="showForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="Add keywords">
+
+      <div class="drawer__header">
+        <h2 class="drawer__title">Add keywords</h2>
+        <button class="icon-btn" (click)="showForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="mode-tabs">
+        <button class="mode-tab" [class.mode-tab--active]="addMode()==='single'" (click)="addMode.set('single')">
+          <span class="material-symbols-rounded">add_circle</span> Single keyword
+        </button>
+        <button class="mode-tab" [class.mode-tab--active]="addMode()==='bulk'" (click)="addMode.set('bulk')">
+          <span class="material-symbols-rounded">format_list_bulleted</span> Bulk import
+        </button>
+      </div>
+
+      @if (addMode() === 'single') {
+        <!-- Single keyword form -->
+        <form [formGroup]="singleForm" (ngSubmit)="saveSingle()" novalidate class="drawer__body">
+
+          <div class="form-field">
+            <label class="form-label" for="kw_text">Keyword <span class="required">*</span></label>
+            <input id="kw_text" type="text" class="form-input"
+              [class.form-input--error]="kwField.invalid && kwField.touched"
+              formControlName="keyword"
+              placeholder="e.g. solar installation Nairobi" />
+            @if (kwField.invalid && kwField.touched) {
+              <span class="form-error">Keyword is required (min 2 chars).</span>
+            }
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label" for="kw_intent">Intent</label>
+              <select id="kw_intent" class="form-input" formControlName="intent">
+                @for (i of intentOptions; track i) {
+                  <option [value]="i">{{ i | titlecase }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="kw_priority">Priority</label>
+              <select id="kw_priority" class="form-input" formControlName="priority">
+                @for (p of priorityOptions; track p) {
+                  <option [value]="p">{{ p | titlecase }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="kw_cat">Category</label>
+            <input id="kw_cat" type="text" class="form-input"
+              formControlName="category" placeholder="e.g. Renewable Energy" />
+          </div>
+
+          <!-- Locations -->
+          <div class="locations-section">
+            <div class="locations-section__header">
+              <span class="form-label">Locations to track</span>
+              <button type="button" class="btn btn--ghost btn--sm" (click)="addLocation()">
+                <span class="material-symbols-rounded">add</span> Add location
+              </button>
+            </div>
+
+            <div formArrayName="locations" class="locations-list">
+              @for (loc of locationsArray.controls; track $index; let i = $index) {
+                <div [formGroupName]="i" class="location-row">
+                  <select class="form-input location-row__country" formControlName="country">
+                    <option value="KE">Kenya</option>
+                    <option value="UG">Uganda</option>
+                    <option value="TZ">Tanzania</option>
+                    <option value="NG">Nigeria</option>
+                    <option value="GH">Ghana</option>
+                    <option value="ZA">South Africa</option>
+                  </select>
+                  <input class="form-input location-row__city"
+                    formControlName="city" placeholder="City (optional)" />
+                  <input class="form-input location-row__region"
+                    formControlName="region" placeholder="Region (optional)" />
+                  <button type="button" class="icon-btn icon-btn--danger"
+                    (click)="removeLocation(i)"
+                    [disabled]="locationsArray.length === 1"
+                    title="Remove location">
+                    <span class="material-symbols-rounded">remove_circle</span>
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="drawer__footer">
+            <button type="button" class="btn btn--ghost" (click)="showForm.set(false)">Cancel</button>
+            <button type="submit" class="btn btn--primary" [disabled]="saving()">
+              @if (saving()) { <span class="btn__spinner"></span> Adding… }
+              @else { Add keyword }
+            </button>
+          </div>
+        </form>
+
+      } @else {
+        <!-- Bulk import -->
+        <div class="drawer__body">
+          <div class="form-field">
+            <label class="form-label" for="bulk_text">
+              Keywords <span class="required">*</span>
+              <span class="form-hint-inline">One per line, max 100</span>
+            </label>
+            <textarea
+              id="bulk_text"
+              class="form-input bulk-textarea"
+              [ngModel]="bulkText()"
+              (ngModelChange)="bulkText.set($event)"
+              placeholder="solar installation Nairobi&#10;solar panels price Kenya&#10;best solar company Nairobi&#10;..."
+              rows="12"
+            ></textarea>
+            <span class="form-hint">
+              {{ bulkText().split('\n').filter(l => l.trim().length > 1).length }} keywords ready to import
+            </span>
+          </div>
+
+          <div class="bulk-preview">
+            <span class="material-symbols-rounded">info</span>
+            All bulk keywords are imported with <strong>unknown</strong> intent and <strong>medium</strong> priority.
+            You can update them individually after import.
+          </div>
+
+          <div class="drawer__footer">
+            <button type="button" class="btn btn--ghost" (click)="showForm.set(false)">Cancel</button>
+            <button type="button" class="btn btn--primary" [disabled]="saving()" (click)="saveBulk()">
+              @if (saving()) { <span class="btn__spinner"></span> Importing… }
+              @else { Import keywords }
+            </button>
+          </div>
+        </div>
+      }
+
+    </div>
+  </div>
+}
+
+<!-- ── Delete confirm ── -->
+@if (deleteId()) {
+  <app-confirm-modal
+    title="Remove keyword?"
+    [message]="'Remove &quot;' + deleteKw() + '&quot;? This will also delete all its measurements and history.'"
+    confirmLabel="Remove"
+    [danger]="true"
+    (confirmed)="remove()"
+    (cancelled)="deleteId.set(null)"
+  />
+}

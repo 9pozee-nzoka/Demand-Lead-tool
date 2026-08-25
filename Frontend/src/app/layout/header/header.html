@@ -1,0 +1,63 @@
+<header class="header">
+
+  <!-- Hamburger -->
+  <button class="header__toggle" (click)="toggleSidebar.emit()" aria-label="Toggle sidebar">
+    <span class="material-symbols-rounded">menu</span>
+  </button>
+
+  <!-- Page title -->
+  <h1 class="header__title">{{ pageTitle() }}</h1>
+
+  <div class="header__spacer"></div>
+
+  <!-- Right actions -->
+  <div class="header__actions">
+
+    <!-- Org pill -->
+    <div class="header__org-pill">
+      <span class="material-symbols-rounded">domain</span>
+      <span>{{ auth.user()?.organization?.name ?? 'Organisation' }}</span>
+    </div>
+
+    <!-- Notification bell (visual only — Sprint 9) -->
+    <button class="header__icon-btn" aria-label="Notifications" title="Alerts">
+      <span class="material-symbols-rounded">notifications</span>
+    </button>
+
+    <!-- Avatar / user menu -->
+    <div class="header__user" (clickoutside)="userMenuOpen.set(false)">
+      <button
+        class="header__avatar"
+        (click)="userMenuOpen.update(v => !v)"
+        [attr.aria-expanded]="userMenuOpen()"
+        aria-label="User menu"
+      >
+        {{ initials() }}
+      </button>
+
+      @if (userMenuOpen()) {
+        <div class="header__dropdown" role="menu">
+          <div class="header__dropdown-user">
+            <div class="header__dropdown-avatar">{{ initials() }}</div>
+            <div>
+              <div class="header__dropdown-name">{{ auth.user()?.name }}</div>
+              <div class="header__dropdown-email">{{ auth.user()?.email }}</div>
+            </div>
+          </div>
+          <div class="header__dropdown-divider"></div>
+          <button class="header__dropdown-item" role="menuitem" (mousedown)="userMenuOpen.set(false)">
+            <span class="material-symbols-rounded">manage_accounts</span> Profile
+          </button>
+          <button class="header__dropdown-item" role="menuitem" (mousedown)="userMenuOpen.set(false)">
+            <span class="material-symbols-rounded">settings</span> Settings
+          </button>
+          <div class="header__dropdown-divider"></div>
+          <button class="header__dropdown-item header__dropdown-item--danger" role="menuitem" (mousedown)="logout()">
+            <span class="material-symbols-rounded">logout</span> Sign out
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+
+</header>

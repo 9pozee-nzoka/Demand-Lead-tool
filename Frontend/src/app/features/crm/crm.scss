@@ -1,0 +1,421 @@
+// ── Header ─────────────────────────────────────────────────────────────────────
+.crm-header-actions { display: flex; align-items: center; gap: 10px; }
+.view-toggle { display: flex; gap: 4px; }
+.btn--active { background: var(--color-primary-light) !important; color: var(--color-primary) !important; }
+
+// ── Kanban pipeline ─────────────────────────────────────────────────────────────
+.pipeline {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 20px;
+  align-items: flex-start;
+
+  &__col {
+    flex: 0 0 200px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 12px;
+    transition: border-color 0.15s, background 0.15s;
+    min-height: 200px;
+
+    &--over {
+      border-color: var(--color-primary);
+      background: var(--color-primary-light);
+    }
+  }
+
+  &__col-header {
+    margin-bottom: 10px;
+  }
+
+  &__col-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+  }
+
+  &__col-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--color-text);
+    text-transform: capitalize;
+  }
+
+  &__col-count {
+    background: var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 1px 7px;
+  }
+
+  &__col-revenue {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-success);
+  }
+
+  &__cards { display: flex; flex-direction: column; gap: 7px; }
+
+  &__col-empty {
+    font-size: 11.5px;
+    color: var(--color-text-disabled);
+    text-align: center;
+    padding: 20px 8px;
+    border: 2px dashed var(--color-border);
+    border-radius: 8px;
+    margin-top: 4px;
+  }
+}
+
+// ── Deal card ───────────────────────────────────────────────────────────────────
+.deal-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  padding: 11px;
+  cursor: grab;
+  transition: box-shadow 0.15s, transform 0.1s;
+  user-select: none;
+
+  &:active { cursor: grabbing; transform: rotate(1deg); }
+  &:hover  { box-shadow: 0 3px 12px rgba(0,0,0,.1); }
+
+  &--won  { border-left: 3px solid var(--color-success); }
+  &--lost { border-left: 3px solid var(--color-danger); opacity: 0.7; }
+
+  &__title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 5px;
+    line-height: 1.3;
+  }
+
+  &__value {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-success);
+    margin-bottom: 7px;
+  }
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  &__assignee { display: flex; }
+
+  &__avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__close {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--color-text-secondary);
+    .material-symbols-rounded { font-size: 12px; }
+  }
+}
+
+// ── Deal drawer ─────────────────────────────────────────────────────────────────
+.drawer-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+  animation: fade 0.2s ease;
+}
+
+.drawer {
+  width: 100%;
+  max-width: 460px;
+  height: 100%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 40px rgba(0,0,0,.15);
+  animation: slide-in 0.25s cubic-bezier(0.4,0,0.2,1);
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+
+  &__header-body { flex: 1; min-width: 0; }
+
+  &__title {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__value { font-size: 18px; font-weight: 800; color: var(--color-success); }
+
+  &__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 16px;
+    margin-top: auto;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+// ── Stage strip ─────────────────────────────────────────────────────────────────
+.deal-stages {
+  display: flex;
+  overflow-x: auto;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 20px;
+  flex-shrink: 0;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.deal-stage-btn {
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  text-transform: capitalize;
+
+  &:hover   { color: var(--color-text); }
+  &--active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+  &--won    { &.deal-stage-btn--active { color: var(--color-success); border-bottom-color: var(--color-success); } }
+  &--lost   { &.deal-stage-btn--active { color: var(--color-danger);  border-bottom-color: var(--color-danger);  } }
+}
+
+// ── Drawer tabs ─────────────────────────────────────────────────────────────────
+.drawer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  padding: 0 20px;
+}
+
+.drawer-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+
+  .material-symbols-rounded { font-size: 16px; }
+  &:hover   { color: var(--color-text); }
+  &--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+  &__badge {
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+}
+
+// ── Details tab ─────────────────────────────────────────────────────────────────
+.deal-details { display: flex; flex-direction: column; gap: 0; }
+
+.deal-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13.5px;
+  gap: 12px;
+
+  &:last-of-type { border-bottom: none; }
+}
+
+.deal-detail-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  min-width: 110px;
+}
+
+.text-success { color: var(--color-success); font-weight: 600; }
+
+.deal-close-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+// ── Tasks ───────────────────────────────────────────────────────────────────────
+.tasks-section { display: flex; flex-direction: column; gap: 14px; }
+
+.task-form {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 8px;
+  align-items: center;
+
+  @media (max-width: 480px) { grid-template-columns: 1fr auto; }
+
+  &__input { flex: 1; }
+  &__type  { width: 110px; font-size: 12.5px; @media (max-width: 480px) { display: none; } }
+  &__date  { width: 140px; font-size: 12.5px; @media (max-width: 480px) { display: none; } }
+}
+
+.task-list { display: flex; flex-direction: column; gap: 6px; }
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: var(--color-hover);
+  border-radius: 8px;
+  transition: opacity 0.2s;
+
+  &--done { opacity: 0.5; }
+
+  &__check {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    color: var(--color-text-secondary);
+    transition: color 0.15s;
+    &:hover:not(:disabled) { color: var(--color-success); }
+    &:disabled { cursor: default; color: var(--color-success); }
+    .material-symbols-rounded { font-size: 20px; }
+  }
+
+  &__icon {
+    font-size: 17px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  &__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  &__title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__due { display: block; }
+
+  &__del { flex-shrink: 0; }
+}
+
+// ── Notes ───────────────────────────────────────────────────────────────────────
+.notes-section { display: flex; flex-direction: column; gap: 14px; }
+
+.note-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  &__btn { align-self: flex-end; }
+}
+
+.note-list { display: flex; flex-direction: column; gap: 10px; }
+
+.note-item {
+  background: var(--color-hover);
+  border-radius: 10px;
+  padding: 12px 14px;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  &__author { font-size: 12.5px; font-weight: 700; color: var(--color-text); }
+  &__time   { flex: 1; }
+  &__del    { flex-shrink: 0; }
+
+  &__body {
+    font-size: 13.5px;
+    color: var(--color-text);
+    line-height: 1.55;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.drawer-empty {
+  text-align: center;
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--color-text-disabled);
+}
+
+// ── icon-btn danger ────────────────────────────────────────────────────────────
+.icon-btn--danger:hover { background: #fff1f2; color: var(--color-danger); }
+
+@keyframes fade    { from { opacity: 0; }            to { opacity: 1; } }
+@keyframes slide-in{ from { transform: translateX(100%); } to { transform: translateX(0); } }

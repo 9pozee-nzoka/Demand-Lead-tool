@@ -38,7 +38,7 @@ class UsageRecord extends Model
     // -------------------------------------------------------------------------
 
     /** Increment a metric for the current calendar month */
-    public static function increment(int $organizationId, string $metric, int $by = 1): void
+    public static function track(int $organizationId, string $metric, int $by = 1): void
     {
         static::updateOrCreate(
             [

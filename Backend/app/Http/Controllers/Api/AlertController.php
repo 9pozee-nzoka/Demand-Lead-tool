@@ -96,6 +96,32 @@ class AlertController extends Controller
         return response()->json(['message' => 'Alert rule deleted.']);
     }
 
+    /**
+     * PATCH /api/v1/alerts/{alert}/read
+     */
+    public function markRead(Request $request, \App\Models\Alert $alert): JsonResponse
+    {
+        if ((int) $alert->organization_id !== (int) $request->user()->organization_id) {
+            abort(403);
+        }
+        $alert->update(['status' => 'read', 'read_at' => now()]);
+        return response()->json($alert->fresh());
+    }
+
+    /**
+     * POST /api/v1/alerts/read-all
+     * Mark all unread dashboard alerts as read.
+     */
+    public function markAllRead(Request $request): JsonResponse
+    {
+        \App\Models\Alert::where('organization_id', $request->user()->organization_id)
+            ->where('channel', 'dashboard')
+            ->whereNotIn('status', ['read'])
+            ->update(['status' => 'read', 'read_at' => now()]);
+
+        return response()->json(['message' => 'All alerts marked as read.']);
+    }
+
     private function authorizeRule(Request $request, AlertRule $rule): void
     {
         if ((int) $rule->organization_id !== (int) $request->user()->organization_id) {

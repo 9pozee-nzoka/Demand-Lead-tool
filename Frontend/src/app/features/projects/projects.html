@@ -1,0 +1,177 @@
+<app-page-header title="Projects" subtitle="Organise your keywords and demand signals by project">
+  <button class="btn btn--primary" (click)="openCreate()">
+    <span class="material-symbols-rounded">add</span> New project
+  </button>
+</app-page-header>
+
+<!-- Search -->
+<div class="projects-toolbar">
+  <div class="search-input">
+    <span class="material-symbols-rounded search-input__icon">search</span>
+    <input
+      class="form-input search-input__field"
+      [ngModel]="searchQuery()"
+      (ngModelChange)="searchQuery.set($event)"
+      placeholder="Search projects…"
+    />
+  </div>
+  <span class="projects-toolbar__count">
+    {{ filtered().length }} project{{ filtered().length === 1 ? '' : 's' }}
+  </span>
+</div>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (filtered().length === 0 && projects().length === 0) {
+  <app-empty-state icon="folder_open" title="No projects yet"
+    message="Create your first project to start tracking keywords and detecting demand opportunities.">
+    <button class="btn btn--primary" style="margin-top:16px" (click)="openCreate()">
+      <span class="material-symbols-rounded">add</span> Create project
+    </button>
+  </app-empty-state>
+} @else if (filtered().length === 0) {
+  <app-empty-state icon="search_off" title="No matching projects"
+    message="Try a different search term." />
+} @else {
+  <div class="project-grid">
+    @for (p of filtered(); track p.id) {
+      <div class="project-card card">
+
+        <!-- Header row -->
+        <div class="project-card__header">
+          <div class="project-card__icon">
+            <span class="material-symbols-rounded">folder_open</span>
+          </div>
+          <div class="project-card__meta">
+            @if (p.industry) {
+              <span class="project-card__industry">{{ p.industry }}</span>
+            }
+            <app-badge [variant]="statusVariant(p.status)">{{ p.status }}</app-badge>
+          </div>
+        </div>
+
+        <!-- Title + location -->
+        <h3 class="project-card__name">{{ p.name }}</h3>
+        @if (p.default_location || p.country) {
+          <div class="project-card__location">
+            <span class="material-symbols-rounded">location_on</span>
+            {{ p.default_location ?? '' }}{{ p.default_location && p.country ? ', ' : '' }}{{ p.country ?? '' }}
+          </div>
+        }
+
+        <!-- Stats -->
+        <div class="project-card__stats">
+          <div class="project-card__stat">
+            <span class="project-card__stat-value">{{ p.keywords_count ?? 0 }}</span>
+            <span class="project-card__stat-label">Keywords</span>
+          </div>
+          <div class="project-card__stat">
+            <span class="project-card__stat-value">{{ p.opportunities_count ?? 0 }}</span>
+            <span class="project-card__stat-label">Opportunities</span>
+          </div>
+          <div class="project-card__stat">
+            <span class="project-card__stat-value">{{ p.leads_count ?? 0 }}</span>
+            <span class="project-card__stat-label">Leads</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="project-card__actions">
+          <a [routerLink]="['/keywords']" [queryParams]="{project_id: p.id}"
+             class="btn btn--ghost btn--sm">
+            <span class="material-symbols-rounded">manage_search</span> Keywords
+          </a>
+          <a [routerLink]="['/opportunities']" [queryParams]="{project_id: p.id}"
+             class="btn btn--ghost btn--sm">
+            <span class="material-symbols-rounded">bolt</span> Opps
+          </a>
+          <button class="icon-btn" title="Edit project" (click)="openEdit(p)">
+            <span class="material-symbols-rounded">edit</span>
+          </button>
+          <button class="icon-btn icon-btn--danger" title="Archive project" (click)="confirmArchive(p.id)">
+            <span class="material-symbols-rounded">archive</span>
+          </button>
+        </div>
+
+      </div>
+    }
+  </div>
+}
+
+<!-- ── Create / Edit form drawer ── -->
+@if (showForm()) {
+  <div class="drawer-backdrop" (click)="showForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog"
+         [attr.aria-label]="editingId() ? 'Edit project' : 'New project'">
+
+      <div class="drawer__header">
+        <h2 class="drawer__title">{{ editingId() ? 'Edit project' : 'New project' }}</h2>
+        <button class="icon-btn" (click)="showForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="save()" novalidate class="drawer__body">
+
+        <div class="form-field">
+          <label class="form-label" for="proj_name">Project name <span class="required">*</span></label>
+          <input id="proj_name" type="text" class="form-input"
+            [class.form-input--error]="name.invalid && name.touched"
+            formControlName="name" placeholder="e.g. Nairobi Solar Campaign" />
+          @if (name.invalid && name.touched) {
+            <span class="form-error">Project name is required (min 2 chars).</span>
+          }
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="proj_industry">Industry</label>
+            <select id="proj_industry" class="form-input" formControlName="industry">
+              <option value="">Select…</option>
+              @for (i of industries; track i) {
+                <option [value]="i">{{ i }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="proj_country">Country</label>
+            <select id="proj_country" class="form-input" formControlName="country">
+              @for (c of countries; track c.code) {
+                <option [value]="c.code">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="proj_location">Default location</label>
+          <input id="proj_location" type="text" class="form-input"
+            formControlName="default_location" placeholder="e.g. Nairobi" />
+          <span class="form-hint">Used as the default city/region for keyword tracking.</span>
+        </div>
+
+        <div class="drawer__footer">
+          <button type="button" class="btn btn--ghost" (click)="showForm.set(false)">Cancel</button>
+          <button type="submit" class="btn btn--primary" [disabled]="saving()">
+            @if (saving()) { <span class="btn__spinner"></span> Saving… }
+            @else { {{ editingId() ? 'Save changes' : 'Create project' }} }
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+}
+
+<!-- ── Archive confirm ── -->
+@if (archiveId()) {
+  <app-confirm-modal
+    title="Archive project?"
+    message="This will archive the project and pause all keyword monitoring. You can restore it later."
+    confirmLabel="Archive"
+    [danger]="true"
+    (confirmed)="archive()"
+    (cancelled)="archiveId.set(null)"
+  />
+}

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateOpportunityExplanation;
 use App\Models\Opportunity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -65,11 +66,14 @@ class OpportunityController extends Controller
         // Update status to actioned
         $opportunity->update(['status' => 'actioned']);
 
-        // TODO: dispatch specific action jobs in Sprint 3+
-        // match ($data['action']) {
-        //     'create_landing_page' => CreateLandingPageFromOpportunity::dispatch($opportunity),
-        //     ...
-        // };
+        match ($data['action']) {
+            'create_landing_page' => \App\Jobs\CreateLandingPageFromOpportunity::dispatchIf(
+                class_exists(\App\Jobs\CreateLandingPageFromOpportunity::class), $opportunity->id
+            ),
+            'send_alert'   => \App\Jobs\SendAlert::dispatch($opportunity->id)->onQueue('notifications'),
+            'notify_sales' => GenerateOpportunityExplanation::dispatch($opportunity->id)->onQueue('processing'),
+            default        => null,
+        };
 
         return response()->json([
             'message'     => 'Action queued.',

@@ -1,3 +1,5 @@
+import { Organization } from './organization.models';
+
 export interface LoginRequest {
   email: string;
   password: string;

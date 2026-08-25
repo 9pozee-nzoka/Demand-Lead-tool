@@ -1,0 +1,200 @@
+<app-page-header title="Dashboard" subtitle="Your demand intelligence overview" />
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else {
+
+  <!-- ── Stat Cards ── -->
+  <div class="stat-grid">
+    <app-stat-card label="Opportunities"    [value]="stats()?.opportunities?.total ?? 0"
+      icon="bolt"            color="primary"
+      [change]="(stats()?.opportunities?.high_score ?? 0) + ' high-score'" trend="up" />
+    <app-stat-card label="Leads This Month" [value]="stats()?.leads?.this_month ?? 0"
+      icon="person_search"   color="success"
+      [change]="(stats()?.leads?.hot ?? 0) + ' hot leads'" trend="up" />
+    <app-stat-card label="Open Deals"       [value]="stats()?.deals?.open ?? 0"
+      icon="business_center" color="warning" />
+    <app-stat-card label="Revenue (Month)"  [value]="(stats()?.deals?.revenue ?? 0) | currencyKe"
+      icon="payments"        color="success" trend="up" />
+  </div>
+
+  <!-- ── Alert banner ── -->
+  @if ((stats()?.leads?.unassigned ?? 0) > 0) {
+    <div class="alert-banner">
+      <span class="material-symbols-rounded">warning</span>
+      <span><strong>{{ stats()?.leads?.unassigned }}</strong> leads are unassigned.</span>
+      <a routerLink="/leads" class="alert-banner__link">View leads →</a>
+    </div>
+  }
+
+  <!-- ── Row 1: Funnel + ROI ── -->
+  <div class="dash-grid">
+
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">Search → Revenue Funnel</h2>
+        <a routerLink="/reports" class="card__link">Full report →</a>
+      </div>
+      <div class="funnel">
+        @for (step of [
+          { label:'Opportunities', value: funnel()?.opportunities ?? 0, color:'#6366f1' },
+          { label:'Leads',         value: funnel()?.leads ?? 0,         color:'#3b82f6' },
+          { label:'Qualified',     value: funnel()?.qualified ?? 0,     color:'#0ea5e9' },
+          { label:'Deals',         value: funnel()?.deals ?? 0,         color:'#10b981' },
+          { label:'Won',           value: funnel()?.won_deals ?? 0,     color:'#22c55e' }
+        ]; track step.label) {
+          <div class="funnel__step">
+            <div class="funnel__label">{{ step.label }}</div>
+            <div class="funnel__bar-wrap">
+              <div class="funnel__bar"
+                [style.width]="funnelPercent(step.value, funnel()?.opportunities ?? 1) + '%'"
+                [style.background]="step.color"></div>
+            </div>
+            <div class="funnel__value">{{ step.value | number }}</div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">ROI — {{ roi()?.period }}</h2>
+      </div>
+      <div class="roi-grid">
+        <div class="roi-stat">
+          <span class="roi-stat__label">Revenue</span>
+          <span class="roi-stat__value">{{ roi()?.revenue | currencyKe }}</span>
+        </div>
+        <div class="roi-stat">
+          <span class="roi-stat__label">Leads Generated</span>
+          <span class="roi-stat__value">{{ roi()?.leads_generated | number }}</span>
+        </div>
+        <div class="roi-stat">
+          <span class="roi-stat__label">Conversion Rate</span>
+          <span class="roi-stat__value">{{ conversionRate }}</span>
+        </div>
+        <div class="roi-stat">
+          <span class="roi-stat__label">Qualification Rate</span>
+          <span class="roi-stat__value">{{ qualificationRate }}</span>
+        </div>
+        <div class="roi-stat">
+          <span class="roi-stat__label">Alerts Sent</span>
+          <span class="roi-stat__value">{{ roi()?.alerts_sent | number }}</span>
+        </div>
+        <div class="roi-stat">
+          <span class="roi-stat__label">AI Requests</span>
+          <span class="roi-stat__value">{{ roi()?.ai_requests | number }}</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /dash-grid row 1 -->
+
+  <!-- ── Row 2: Top Opportunities + Trending Keywords ── -->
+  <div class="dash-grid dash-grid--row2">
+
+    <!-- Top Opportunities -->
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">Top Opportunities</h2>
+        <a routerLink="/opportunities" class="card__link">View all →</a>
+      </div>
+
+      @if (topOpportunities().length === 0) {
+        <div class="empty-widget">
+          <span class="material-symbols-rounded">bolt</span>
+          <p>No opportunities yet. Add keywords to start detecting demand.</p>
+        </div>
+      } @else {
+        <div class="opp-widget-list">
+          @for (opp of topOpportunities(); track opp.id) {
+            <a [routerLink]="['/opportunities']" [queryParams]="{id: opp.id}" class="opp-widget-row">
+              <!-- Score badge -->
+              <div class="opp-widget-score" [class]="'opp-widget-score--' + scoreBg(opp.score_label)">
+                {{ opp.opportunity_score | number:'1.0-0' }}
+              </div>
+              <!-- Info -->
+              <div class="opp-widget-info">
+                <span class="opp-widget-kw">{{ opp.keyword ?? 'Opportunity #' + opp.id }}</span>
+                <span class="opp-widget-loc">
+                  @if (opp.location) {
+                    <span class="material-symbols-rounded">location_on</span>{{ opp.location }}
+                  }
+                  @if (opp.project) {
+                    · {{ opp.project }}
+                  }
+                </span>
+              </div>
+              <!-- Trend state -->
+              <div class="opp-widget-trend">
+                <span class="material-symbols-rounded">{{ trendIcon(opp.trend_state) }}</span>
+                <app-badge [variant]="scoreBg(opp.score_label) === 'success' ? 'success' : scoreBg(opp.score_label) === 'primary' ? 'primary' : scoreBg(opp.score_label) === 'warning' ? 'warning' : 'neutral'">
+                  {{ opp.score_label }}
+                </app-badge>
+              </div>
+            </a>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Trending Keywords -->
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">Trending Now</h2>
+        <a routerLink="/trends" class="card__link">See all trends →</a>
+      </div>
+
+      @if (trendingKeywords().length === 0) {
+        <div class="empty-widget">
+          <span class="material-symbols-rounded">trending_up</span>
+          <p>No trending keywords yet. Run demand collection to see results.</p>
+        </div>
+      } @else {
+        <div class="trend-widget-list">
+          @for (kw of trendingKeywords(); track kw.keyword_id) {
+            <div class="trend-widget-row">
+              <div class="trend-widget-info">
+                <span class="trend-widget-kw">{{ kw.keyword }}</span>
+                <span class="trend-widget-geo text-xs text-muted">
+                  {{ kw.geo }} · {{ kw.date }}
+                </span>
+              </div>
+              <div class="trend-widget-right">
+                <app-badge [variant]="growthBadge(kw.growth)">
+                  +{{ kw.growth | number:'1.0-1' }}%
+                </app-badge>
+                <span class="trend-widget-intent text-xs text-muted">{{ kw.intent }}</span>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+  </div><!-- /dash-grid row 2 -->
+
+  <!-- ── Quick actions ── -->
+  <div class="card" style="margin-top:20px">
+    <div class="card__header">
+      <h2 class="card__title">Quick actions</h2>
+    </div>
+    <div class="quick-links">
+      @for (link of [
+        { label:'View Opportunities', icon:'bolt',           route:'/opportunities' },
+        { label:'Manage Leads',       icon:'person_search',  route:'/leads' },
+        { label:'Check Trends',       icon:'trending_up',    route:'/trends' },
+        { label:'Market Gaps',        icon:'track_changes',  route:'/market-gaps' },
+        { label:'Alert Rules',        icon:'notifications',  route:'/alerts' },
+        { label:'Add Keywords',       icon:'manage_search',  route:'/keywords' }
+      ]; track link.route) {
+        <a [routerLink]="link.route" class="quick-link">
+          <span class="quick-link__icon material-symbols-rounded">{{ link.icon }}</span>
+          <span class="quick-link__label">{{ link.label }}</span>
+          <span class="quick-link__arrow material-symbols-rounded">chevron_right</span>
+        </a>
+      }
+    </div>
+  </div>
+
+}

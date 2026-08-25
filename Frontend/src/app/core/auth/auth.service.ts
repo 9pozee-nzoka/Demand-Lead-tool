@@ -14,8 +14,8 @@ import {
 export class AuthService {
   private readonly api = '/api/v1/auth';
 
-  // Reactive state
-  private _user = signal<User | null>(this.tokenStorage.getUser<User>());
+  // Reactive state — initialised lazily after DI so tokenStorage is available
+  private _user = signal<User | null>(null);
 
   readonly user   = this._user.asReadonly();
   readonly isAuth = computed(() => !!this._user());
@@ -26,7 +26,9 @@ export class AuthService {
     private http: HttpClient,
     private router: Router,
     private tokenStorage: TokenStorage,
-  ) {}
+  ) {
+    this._user.set(this.tokenStorage.getUser<User>());
+  }
 
   login(payload: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.api}/login`, payload).pipe(

@@ -1,0 +1,273 @@
+<app-page-header title="Landing Pages" subtitle="Publish targeted pages and capture leads automatically">
+  <button class="btn btn--primary" (click)="openCreate()">
+    <span class="material-symbols-rounded">add</span> New page
+  </button>
+</app-page-header>
+
+<!-- Status filter tabs -->
+<div class="filter-tabs">
+  @for (tab of [
+    {label:'All',tab:'all'}, {label:'Published',tab:'published'},
+    {label:'Draft',tab:'draft'}, {label:'Archived',tab:'archived'}
+  ]; track tab.tab) {
+    <button class="filter-tab" [class.filter-tab--active]="statusFilter()===tab.tab"
+      (click)="setFilter(tab.tab)">{{ tab.label }}</button>
+  }
+</div>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (items().length === 0) {
+  <app-empty-state icon="web" title="No landing pages yet"
+    message="Create targeted landing pages linked to demand opportunities to capture leads automatically.">
+    <button class="btn btn--primary" style="margin-top:16px" (click)="openCreate()">
+      <span class="material-symbols-rounded">add</span> Create first page
+    </button>
+  </app-empty-state>
+} @else {
+  <div class="lp-grid">
+    @for (lp of items(); track lp.id) {
+      <div class="lp-card card">
+
+        <!-- Template preview badge -->
+        <div class="lp-card__preview" [class]="'lp-card__preview--' + lp.template">
+          <span class="material-symbols-rounded lp-card__preview-icon">web</span>
+          <span class="lp-card__template-label">{{ lp.template }}</span>
+        </div>
+
+        <!-- Content -->
+        <div class="lp-card__body">
+          <div class="lp-card__header">
+            <h3 class="lp-card__title">{{ lp.title }}</h3>
+            <app-badge [variant]="statusVariant(lp.status)">{{ lp.status }}</app-badge>
+          </div>
+
+          <div class="lp-card__slug">
+            <span class="material-symbols-rounded">link</span>
+            <span class="lp-card__slug-text">/capture/{{ lp.slug }}</span>
+            <button class="icon-btn lp-card__copy" (click)="copyUrl(lp.slug)" title="Copy URL">
+              <span class="material-symbols-rounded">content_copy</span>
+            </button>
+          </div>
+
+          @if (lp.project) {
+            <div class="lp-card__project">
+              <span class="material-symbols-rounded">folder_open</span>{{ lp.project.name }}
+            </div>
+          }
+
+          <!-- Stats row -->
+          <div class="lp-card__stats">
+            <div class="lp-card__stat">
+              <span class="lp-card__stat-val">{{ lp.leads_count ?? 0 }}</span>
+              <span class="lp-card__stat-lbl">Leads</span>
+            </div>
+            @if (lp.published_at) {
+              <div class="lp-card__stat">
+                <span class="lp-card__stat-val">{{ lp.published_at | date:'MMM d' }}</span>
+                <span class="lp-card__stat-lbl">Published</span>
+              </div>
+            }
+            @if (lp.meta?.description) {
+              <div class="lp-card__stat lp-card__stat--wide">
+                <span class="lp-card__stat-lbl seo-label">
+                  <span class="material-symbols-rounded">search</span> SEO
+                </span>
+                <span class="lp-card__seo-desc">{{ lp.meta!.description }}</span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Actions footer -->
+        <div class="lp-card__actions">
+          <button class="btn btn--ghost btn--sm" (click)="openEdit(lp)">
+            <span class="material-symbols-rounded">edit</span> Edit
+          </button>
+          <button class="btn btn--sm"
+            [class]="lp.status === 'published' ? 'btn--ghost' : 'btn--primary'"
+            (click)="togglePublish(lp)">
+            <span class="material-symbols-rounded">
+              {{ lp.status === 'published' ? 'unpublished' : 'publish' }}
+            </span>
+            {{ lp.status === 'published' ? 'Unpublish' : 'Publish' }}
+          </button>
+          <button class="icon-btn icon-btn--danger" title="Delete page" (click)="confirmDelete(lp.id)">
+            <span class="material-symbols-rounded">delete</span>
+          </button>
+        </div>
+
+      </div>
+    }
+  </div>
+
+  @if ((page()?.last_page ?? 1) > 1) {
+    <div class="pagination">
+      Page {{ page()?.current_page }} of {{ page()?.last_page }}
+    </div>
+  }
+}
+
+<!-- ── Create / Edit drawer ── -->
+@if (showForm()) {
+  <div class="drawer-backdrop" (click)="showForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog"
+      [attr.aria-label]="editingId() ? 'Edit landing page' : 'New landing page'">
+
+      <div class="drawer__header">
+        <h2 class="drawer__title">{{ editingId() ? 'Edit page' : 'New landing page' }}</h2>
+        <!-- Step indicator -->
+        <div class="step-indicator">
+          <span class="step-dot" [class.step-dot--active]="formStep() === 1">1</span>
+          <span class="step-line"></span>
+          <span class="step-dot" [class.step-dot--active]="formStep() === 2">2</span>
+        </div>
+        <button class="icon-btn" (click)="showForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="save()" novalidate class="drawer__body">
+
+        <!-- ── Step 1: Details + Template ── -->
+        @if (formStep() === 1) {
+          <div class="form-field">
+            <label class="form-label" for="lp_project">Project <span class="required">*</span></label>
+            <select id="lp_project" class="form-input"
+              [class.form-input--error]="projectField.invalid && projectField.touched"
+              formControlName="project_id">
+              <option [value]="null">Select project…</option>
+              @for (p of projects(); track p.id) {
+                <option [value]="p.id">{{ p.name }}</option>
+              }
+            </select>
+            @if (projectField.invalid && projectField.touched) {
+              <span class="form-error">Project is required.</span>
+            }
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="lp_title">Page title <span class="required">*</span></label>
+            <input id="lp_title" type="text" class="form-input"
+              [class.form-input--error]="titleField.invalid && titleField.touched"
+              formControlName="title"
+              placeholder="e.g. Solar Installation Nairobi — Get a Free Quote" />
+            @if (titleField.invalid && titleField.touched) {
+              <span class="form-error">Title is required (min 3 chars).</span>
+            }
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="lp_slug">
+              URL slug
+              <span class="form-label__optional">(auto-generated if blank)</span>
+            </label>
+            <div class="slug-input">
+              <span class="slug-input__prefix">/capture/</span>
+              <input id="lp_slug" type="text" class="form-input slug-input__field"
+                [class.form-input--error]="slugField.invalid && slugField.touched"
+                formControlName="slug"
+                placeholder="solar-nairobi-quote" />
+            </div>
+            @if (slugField.invalid && slugField.touched) {
+              <span class="form-error">Slug must be lowercase letters, numbers and hyphens only.</span>
+            }
+          </div>
+
+          <!-- Template picker -->
+          <div class="form-field">
+            <label class="form-label">Template <span class="required">*</span></label>
+            <div class="template-grid">
+              @for (t of templates; track t.value) {
+                <button type="button" class="template-tile"
+                  [class.template-tile--active]="form.value.template === t.value"
+                  (click)="form.patchValue({template: t.value})">
+                  <span class="material-symbols-rounded template-tile__icon">{{ t.icon }}</span>
+                  <span class="template-tile__label">{{ t.label }}</span>
+                  <span class="template-tile__desc">{{ t.desc }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="lp_content">Page content / headline</label>
+            <textarea id="lp_content" class="form-input" formControlName="content"
+              rows="4"
+              placeholder="Write a compelling headline or description for this page…"></textarea>
+          </div>
+
+          <div class="drawer__footer">
+            <button type="button" class="btn btn--ghost" (click)="showForm.set(false)">Cancel</button>
+            <button type="button" class="btn btn--primary" (click)="formStep.set(2)">
+              Next: SEO <span class="material-symbols-rounded">arrow_forward</span>
+            </button>
+          </div>
+        }
+
+        <!-- ── Step 2: SEO Meta ── -->
+        @if (formStep() === 2) {
+          <div class="seo-intro">
+            <span class="material-symbols-rounded">search</span>
+            <p>SEO metadata helps search engines and social platforms understand your page.</p>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="lp_desc">Meta description</label>
+            <textarea id="lp_desc" class="form-input" formControlName="meta_description"
+              rows="3" maxlength="300"
+              placeholder="A brief description for search engines (max 300 chars)…"></textarea>
+            <span class="form-hint">
+              {{ (form.value.meta_description ?? '').length }}/300 characters
+            </span>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="lp_keywords">Meta keywords</label>
+            <input id="lp_keywords" type="text" class="form-input"
+              formControlName="meta_keywords"
+              placeholder="solar installation, solar panels Kenya, solar quote Nairobi" />
+            <span class="form-hint">Comma-separated keywords.</span>
+          </div>
+
+          <!-- Preview card -->
+          <div class="seo-preview">
+            <div class="seo-preview__label">Search preview</div>
+            <div class="seo-preview__card">
+              <div class="seo-preview__url">
+                {{ form.value.slug || 'your-page-slug' }}
+              </div>
+              <div class="seo-preview__title">
+                {{ form.value.title || 'Your page title' }}
+              </div>
+              <div class="seo-preview__desc">
+                {{ form.value.meta_description || 'Your meta description will appear here.' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="drawer__footer">
+            <button type="button" class="btn btn--ghost" (click)="formStep.set(1)">
+              <span class="material-symbols-rounded">arrow_back</span> Back
+            </button>
+            <button type="submit" class="btn btn--primary" [disabled]="saving()">
+              @if (saving()) { <span class="btn__spinner"></span> Saving… }
+              @else { {{ editingId() ? 'Save changes' : 'Create page' }} }
+            </button>
+          </div>
+        }
+
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Delete confirm -->
+@if (deleteId()) {
+  <app-confirm-modal
+    title="Delete landing page?"
+    message="This will permanently delete the page and stop new lead captures. Existing leads are preserved."
+    confirmLabel="Delete" [danger]="true"
+    (confirmed)="remove()"
+    (cancelled)="deleteId.set(null)" />
+}

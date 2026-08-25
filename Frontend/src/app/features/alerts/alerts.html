@@ -1,0 +1,261 @@
+<app-page-header title="Alerts" subtitle="Notifications fired for opportunities and leads">
+  @if (tab() === 'history' && unreadCount() > 0) {
+    <button class="btn btn--ghost btn--sm" (click)="markAllRead()">
+      <span class="material-symbols-rounded">done_all</span> Mark all read
+    </button>
+  }
+  @if (tab() === 'rules') {
+    <button class="btn btn--primary" (click)="openCreateRule()">
+      <span class="material-symbols-rounded">add</span> New rule
+    </button>
+  }
+</app-page-header>
+
+<!-- Tab bar -->
+<div class="alerts-tabs">
+  <button class="alerts-tab" [class.alerts-tab--active]="tab()==='history'" (click)="tab.set('history')">
+    <span class="material-symbols-rounded">notifications</span>
+    History
+    @if (unreadCount() > 0) {
+      <span class="alerts-tab__badge">{{ unreadCount() }}</span>
+    }
+  </button>
+  <button class="alerts-tab" [class.alerts-tab--active]="tab()==='rules'" (click)="tab.set('rules')">
+    <span class="material-symbols-rounded">rule</span>
+    Alert Rules
+    <span class="alerts-tab__count">{{ rules().length }}</span>
+  </button>
+</div>
+
+<!-- ── History tab ── -->
+@if (tab() === 'history') {
+  @if (loading()) {
+    <app-loading-spinner [full]="true" />
+  } @else if (!alertPage()?.data?.length) {
+    <app-empty-state icon="notifications_none" title="No alerts yet"
+      message="Alerts fire when demand signals meet your configured rules." />
+  } @else {
+    <div class="alert-list">
+      @for (a of alertPage()!.data; track a.id) {
+        <div class="alert-row card" [class.alert-row--unread]="a.status !== 'read'"
+          (click)="markRead(a)">
+
+          <div class="alert-row__icon-wrap" [class]="'alert-row__icon-wrap--' + a.type">
+            <span class="material-symbols-rounded">{{ channelIcon(a.channel) }}</span>
+          </div>
+
+          <div class="alert-row__body">
+            <p class="alert-row__message">{{ a.message }}</p>
+            @if (a.opportunity) {
+              <span class="alert-row__meta">
+                Score {{ a.opportunity.opportunity_score | number:'1.0-0' }}
+              </span>
+            }
+          </div>
+
+          <div class="alert-row__right">
+            <app-badge [variant]="statusVariant(a.status)">{{ a.status }}</app-badge>
+            <span class="alert-row__time">{{ a.sent_at ?? a.created_at | timeAgo }}</span>
+            <div class="alert-row__channels">
+              <span class="material-symbols-rounded channel-icon">{{ channelIcon(a.channel) }}</span>
+            </div>
+          </div>
+
+          @if (a.status !== 'read') {
+            <div class="alert-row__dot"></div>
+          }
+        </div>
+      }
+    </div>
+
+    @if ((alertPage()?.last_page ?? 1) > 1) {
+      <div class="pagination">
+        Page {{ alertPage()?.current_page }} of {{ alertPage()?.last_page }}
+        ({{ alertPage()?.total }} total)
+      </div>
+    }
+  }
+}
+
+<!-- ── Rules tab ── -->
+@if (tab() === 'rules') {
+  @if (rules().length === 0) {
+    <app-empty-state icon="rule" title="No alert rules yet"
+      message="Create rules to get notified when demand signals exceed your thresholds.">
+      <button class="btn btn--primary" style="margin-top:16px" (click)="openCreateRule()">
+        <span class="material-symbols-rounded">add</span> Create first rule
+      </button>
+    </app-empty-state>
+  } @else {
+    <div class="rules-list">
+      @for (rule of rules(); track rule.id) {
+        <div class="rule-card card">
+          <div class="rule-card__header">
+            <div class="rule-card__info">
+              <span class="rule-card__name">{{ rule.name }}</span>
+              @if (rule.project) {
+                <span class="rule-card__project">
+                  <span class="material-symbols-rounded">folder_open</span>{{ rule.project.name }}
+                </span>
+              }
+            </div>
+            <div class="rule-card__actions">
+              <!-- Status toggle -->
+              <button class="status-toggle" [class.status-toggle--active]="rule.status === 'active'"
+                (click)="toggleRuleStatus(rule)" [title]="rule.status === 'active' ? 'Pause rule' : 'Activate rule'">
+                <span class="status-toggle__dot"></span>{{ rule.status }}
+              </button>
+              <button class="icon-btn" title="Edit rule" (click)="openEditRule(rule)">
+                <span class="material-symbols-rounded">edit</span>
+              </button>
+              <button class="icon-btn icon-btn--danger" title="Delete rule" (click)="confirmDelete(rule.id)">
+                <span class="material-symbols-rounded">delete</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="rule-card__criteria">
+            <div class="rule-criterion">
+              <span class="material-symbols-rounded">bolt</span>
+              Score ≥ <strong>{{ rule.minimum_score }}</strong>
+            </div>
+            @if (rule.minimum_growth > 0) {
+              <div class="rule-criterion">
+                <span class="material-symbols-rounded">trending_up</span>
+                Growth ≥ <strong>{{ rule.minimum_growth }}%</strong>
+              </div>
+            }
+            @if (rule.intent && rule.intent !== 'any') {
+              <div class="rule-criterion">
+                <span class="material-symbols-rounded">manage_search</span>
+                Intent: <strong>{{ rule.intent }}</strong>
+              </div>
+            }
+            <div class="rule-criterion">
+              <span class="material-symbols-rounded">timer</span>
+              Cooldown: <strong>{{ rule.cooldown }}h</strong>
+            </div>
+          </div>
+
+          <div class="rule-card__channels">
+            @for (ch of (rule.channels ?? []); track ch) {
+              <span class="channel-pill">
+                <span class="material-symbols-rounded">{{ channelIcon(ch) }}</span>{{ ch }}
+              </span>
+            }
+            @if (rule.recipients?.length) {
+              <span class="rule-card__recipients">
+                → {{ rule.recipients!.join(', ') }}
+              </span>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+}
+
+<!-- ── Rule form drawer ── -->
+@if (showRuleForm()) {
+  <div class="drawer-backdrop" (click)="showRuleForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog"
+      [attr.aria-label]="editingRule() ? 'Edit alert rule' : 'New alert rule'">
+
+      <div class="drawer__header">
+        <h2 class="drawer__title">{{ editingRule() ? 'Edit rule' : 'New alert rule' }}</h2>
+        <button class="icon-btn" (click)="showRuleForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <form [formGroup]="ruleForm" (ngSubmit)="saveRule()" novalidate class="drawer__body">
+
+        <!-- Name -->
+        <div class="form-field">
+          <label class="form-label" for="rule_name">Rule name <span class="required">*</span></label>
+          <input id="rule_name" type="text" class="form-input"
+            [class.form-input--error]="nameField.invalid && nameField.touched"
+            formControlName="name" placeholder="e.g. High-score solar Kenya" />
+          @if (nameField.invalid && nameField.touched) {
+            <span class="form-error">Rule name is required.</span>
+          }
+        </div>
+
+        <!-- Thresholds -->
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="rule_score">Min score</label>
+            <input id="rule_score" type="number" class="form-input"
+              formControlName="minimum_score" min="0" max="100" />
+            <span class="form-hint">0–100</span>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="rule_growth">Min growth %</label>
+            <input id="rule_growth" type="number" class="form-input"
+              formControlName="minimum_growth" min="0" />
+          </div>
+        </div>
+
+        <!-- Intent + Cooldown -->
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="rule_intent">Intent filter</label>
+            <select id="rule_intent" class="form-input" formControlName="intent">
+              @for (i of intents; track i.value) {
+                <option [value]="i.value">{{ i.label }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="rule_cooldown">Cooldown (hours)</label>
+            <input id="rule_cooldown" type="number" class="form-input"
+              formControlName="cooldown" min="1" />
+            <span class="form-hint">Min hours between repeat alerts</span>
+          </div>
+        </div>
+
+        <!-- Channels -->
+        <div class="form-field">
+          <label class="form-label">Channels</label>
+          <div class="channel-grid">
+            @for (ch of channels; track ch.value) {
+              <button type="button" class="channel-btn"
+                [class.channel-btn--active]="isChannelSelected(ch.value)"
+                (click)="toggleChannel(ch.value)">
+                <span class="material-symbols-rounded">{{ ch.icon }}</span>
+                {{ ch.label }}
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Recipients -->
+        <div class="form-field">
+          <label class="form-label" for="rule_recipients">Recipients</label>
+          <input id="rule_recipients" type="text" class="form-input"
+            formControlName="recipients"
+            placeholder="+254700000000, alerts@yourcompany.com" />
+          <span class="form-hint">Comma-separated phone numbers or email addresses.</span>
+        </div>
+
+        <div class="drawer__footer">
+          <button type="button" class="btn btn--ghost" (click)="showRuleForm.set(false)">Cancel</button>
+          <button type="submit" class="btn btn--primary" [disabled]="savingRule()">
+            @if (savingRule()) { <span class="btn__spinner"></span> Saving… }
+            @else { {{ editingRule() ? 'Save changes' : 'Create rule' }} }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Delete confirm -->
+@if (deletingId()) {
+  <app-confirm-modal
+    title="Delete alert rule?"
+    message="This will permanently delete the rule and stop future alerts from it."
+    confirmLabel="Delete" [danger]="true"
+    (confirmed)="deleteRule()"
+    (cancelled)="deletingId.set(null)" />
+}

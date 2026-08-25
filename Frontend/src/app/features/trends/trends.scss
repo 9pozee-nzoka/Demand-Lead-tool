@@ -1,0 +1,135 @@
+// ── Period tabs (in page header) ───────────────────────────────────────────────
+.period-tabs {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.period-tab {
+  padding: 5px 12px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover   { color: var(--color-text); }
+  &--active { background: #fff; color: var(--color-primary); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+}
+
+// ── Main tab bar ───────────────────────────────────────────────────────────────
+.trends-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.trends-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+
+  .material-symbols-rounded { font-size: 17px; }
+
+  &:hover   { color: var(--color-text); }
+  &--active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+  &__count {
+    background: var(--color-hover);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+  }
+}
+
+.trends-search {
+  margin-left: auto;
+  position: relative;
+  margin-bottom: 1px;
+
+  .material-symbols-rounded {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 17px;
+    color: var(--color-text-disabled);
+    pointer-events: none;
+  }
+
+  .form-input {
+    padding-left: 34px;
+    height: 34px;
+    font-size: 13px;
+    width: 220px;
+    @media (max-width: 640px) { width: 140px; }
+  }
+}
+
+// ── Table cell enhancements ────────────────────────────────────────────────────
+.kw-cell {
+  &__text {
+    font-weight: 600;
+    color: var(--color-text);
+    text-decoration: none;
+    &:hover { color: var(--color-primary); text-decoration: underline; }
+  }
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  .state-icon { font-size: 16px; color: var(--color-primary); }
+}
+
+// ── Interest bar ───────────────────────────────────────────────────────────────
+.interest-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 120px;
+
+  &__fill {
+    flex: 1;
+    height: 7px;
+    background: var(--color-primary);
+    border-radius: 4px;
+    min-width: 2px;
+    max-width: 100%;
+    transition: width 0.4s ease;
+  }
+
+  &__val {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text);
+    min-width: 24px;
+  }
+}

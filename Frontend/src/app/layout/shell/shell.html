@@ -1,0 +1,24 @@
+<div class="shell">
+  <!-- Mobile overlay -->
+  @if (mobileSidebarOpen()) {
+    <div class="shell__overlay" (click)="mobileSidebarOpen.set(false)"></div>
+  }
+
+  <!-- Sidebar -->
+  <app-sidebar
+    class="shell__sidebar"
+    [class.shell__sidebar--mobile-open]="mobileSidebarOpen()"
+    [collapsed]="sidebarCollapsed()"
+    (closeMobile)="mobileSidebarOpen.set(false)"
+  />
+
+  <!-- Main -->
+  <div class="shell__main">
+    <app-header (toggleSidebar)="toggleSidebar()" />
+    <main class="shell__content">
+      <router-outlet />
+    </main>
+  </div>
+</div>
+
+<app-notifications />
