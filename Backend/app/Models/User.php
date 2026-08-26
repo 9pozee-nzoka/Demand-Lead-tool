@@ -23,6 +23,7 @@ class User extends Authenticatable
         'password',
         'role',
         'status',
+        'is_super_admin',
         'two_factor_enabled',
         'two_factor_secret',
     ];
@@ -39,6 +40,7 @@ class User extends Authenticatable
             'email_verified_at'   => 'datetime',
             'password'            => 'hashed',
             'two_factor_enabled'  => 'boolean',
+            'is_super_admin'      => 'boolean',
         ];
     }
 
@@ -46,10 +48,11 @@ class User extends Authenticatable
     // Role helpers
     // -------------------------------------------------------------------------
 
-    public function isOwner(): bool   { return $this->role === 'owner'; }
-    public function isAdmin(): bool   { return in_array($this->role, ['owner', 'admin'], true); }
-    public function isSales(): bool   { return in_array($this->role, ['owner', 'admin', 'sales'], true); }
-    public function isAnalyst(): bool { return in_array($this->role, ['owner', 'admin', 'analyst'], true); }
+    public function isOwner(): bool       { return $this->role === 'owner'; }
+    public function isAdmin(): bool       { return in_array($this->role, ['owner', 'admin'], true); }
+    public function isSales(): bool       { return in_array($this->role, ['owner', 'admin', 'sales'], true); }
+    public function isAnalyst(): bool     { return in_array($this->role, ['owner', 'admin', 'analyst'], true); }
+    public function isSuperAdmin(): bool  { return (bool) $this->is_super_admin; }
 
     // -------------------------------------------------------------------------
     // Relationships

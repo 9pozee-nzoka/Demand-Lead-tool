@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Deal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,13 +27,6 @@ class DealController extends Controller
         return response()->json($deal->load(['lead', 'contact', 'assignedUser', 'tasks', 'notes']));
     }
 
-    public function destroy(Request $request, Deal $deal): JsonResponse
-    {
-        $this->authorizeDeal($request, $deal);
-        $deal->delete();
-        return response()->json(['message' => 'Deal deleted.']);
-    }
-
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -49,6 +43,12 @@ class DealController extends Controller
         $deal = Deal::create([
             'organization_id' => $request->user()->organization_id,
             ...$data,
+        ]);
+
+        AuditLog::record('deal.created', $deal, [
+            'title' => $deal->title,
+            'value' => $deal->value,
+            'stage' => $deal->stage,
         ]);
 
         return response()->json($deal->load('lead', 'contact'), 201);
@@ -68,6 +68,8 @@ class DealController extends Controller
             'expected_close_at' => ['nullable', 'date'],
         ]);
 
+        $before = $deal->only(['title', 'value', 'stage', 'status']);
+
         if (($data['status'] ?? null) === 'won' && ! $deal->won_at) {
             $data['won_at'] = now();
         }
@@ -77,7 +79,26 @@ class DealController extends Controller
 
         $deal->update($data);
 
+        AuditLog::record('deal.updated', $deal, [
+            'before' => $before,
+            'after'  => $deal->only(array_keys($before)),
+        ]);
+
         return response()->json($deal->fresh());
+    }
+
+    public function destroy(Request $request, Deal $deal): JsonResponse
+    {
+        $this->authorizeDeal($request, $deal);
+
+        AuditLog::record('deal.deleted', $deal, [
+            'title' => $deal->title,
+            'value' => $deal->value,
+        ]);
+
+        $deal->delete();
+
+        return response()->json(['message' => 'Deal deleted.']);
     }
 
     private function authorizeDeal(Request $request, Deal $deal): void

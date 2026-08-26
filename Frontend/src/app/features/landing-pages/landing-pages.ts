@@ -162,7 +162,7 @@ export class LandingPages implements OnInit {
   }
 
   captureUrl(slug: string): string {
-    return `/api/v1/capture/${slug}`;
+    return `/capture/${slug}`;
   }
 
   copyUrl(slug: string): void {

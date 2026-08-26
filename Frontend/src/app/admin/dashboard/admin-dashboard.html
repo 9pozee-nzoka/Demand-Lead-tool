@@ -1,0 +1,100 @@
+<!-- Page header -->
+<div class="admin-page-header">
+  <div>
+    <h1 class="admin-page-title">Dashboard</h1>
+    <p class="admin-page-sub">Platform overview — all tenants</p>
+  </div>
+</div>
+
+@if (loading()) {
+  <app-admin-loading-spinner />
+} @else if (metrics()) {
+
+  @let m = metrics()!;
+
+  <!-- ── KPI cards ── -->
+  <div class="kpi-grid">
+    @for (card of [
+      { label:'Total Orgs',       value: m.totals.organizations,  icon:'business',          color:'indigo',  delta: m.this_month.new_orgs,  deltaLabel:'new this month' },
+      { label:'Active Orgs',      value: m.totals.active_orgs,    icon:'check_circle',      color:'green',   delta: null, deltaLabel:'' },
+      { label:'Total Users',      value: m.totals.users,          icon:'group',             color:'blue',    delta: m.this_month.new_users,  deltaLabel:'new this month' },
+      { label:'Keywords Tracked', value: m.totals.keywords,       icon:'manage_search',     color:'purple',  delta: null, deltaLabel:'' },
+      { label:'Leads Captured',   value: m.totals.leads,          icon:'person_search',     color:'teal',    delta: m.this_month.new_leads,  deltaLabel:'this month' },
+      { label:'Total Revenue',    value: m.totals.revenue,        icon:'payments',          color:'amber',   delta: m.this_month.revenue,    deltaLabel:'this month', currency: true }
+    ]; track card.label) {
+      <div class="kpi-card" [class]="'kpi-card--' + card.color">
+        <div class="kpi-card__icon-wrap">
+          <span class="material-symbols-rounded kpi-card__icon">{{ card.icon }}</span>
+        </div>
+        <div class="kpi-card__body">
+          <span class="kpi-card__label">{{ card.label }}</span>
+          <span class="kpi-card__value">
+            @if (card.currency) { KSh {{ card.value | number:'1.0-0' }} }
+            @else { {{ card.value | number }} }
+          </span>
+          @if (card.delta !== null && card.delta > 0) {
+            <span class="kpi-card__delta">
+              <span class="material-symbols-rounded">arrow_upward</span>
+              +{{ card.delta | number }} {{ card.deltaLabel }}
+            </span>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ── Second row: signups chart + recent signups ── -->
+  <div class="admin-row">
+
+    <!-- Monthly signups bar chart -->
+    <div class="admin-card">
+      <div class="admin-card__header">
+        <h2 class="admin-card__title">New organisations (12 months)</h2>
+      </div>
+      <div class="signup-chart">
+        @for (pt of m.monthly_signups; track pt.month) {
+          <div class="signup-chart__col">
+            <div class="signup-chart__bar-wrap">
+              <div class="signup-chart__bar"
+                [style.height.%]="barHeight(pt.count)"
+                [title]="pt.month + ': ' + pt.count + ' orgs'">
+                @if (pt.count > 0) {
+                  <span class="signup-chart__tip">{{ pt.count }}</span>
+                }
+              </div>
+            </div>
+            <span class="signup-chart__label">{{ pt.month.slice(5) }}</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Recent signups -->
+    <div class="admin-card">
+      <div class="admin-card__header">
+        <h2 class="admin-card__title">Recent signups</h2>
+        <a routerLink="/admin/organizations" class="admin-card__link">All orgs →</a>
+      </div>
+      <div class="recent-list">
+        @for (org of recentSignups(); track org.id) {
+          <a [routerLink]="['/admin/organizations']" [queryParams]="{id: org.id}"
+            class="recent-row">
+            <div class="recent-row__avatar">{{ org.name[0].toUpperCase() }}</div>
+            <div class="recent-row__info">
+              <span class="recent-row__name">{{ org.name }}</span>
+              <span class="recent-row__meta">{{ org.owner }} · {{ org.country }}</span>
+            </div>
+            <div class="recent-row__right">
+              <span class="plan-pill" [style.background]="planBadgeColor(org.plan_slug)">
+                {{ org.plan }}
+              </span>
+              <span class="recent-row__dot" [style.background]="statusDot(org.status)"></span>
+            </div>
+          </a>
+        }
+      </div>
+    </div>
+
+  </div><!-- /admin-row -->
+
+}

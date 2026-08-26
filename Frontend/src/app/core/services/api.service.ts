@@ -32,6 +32,10 @@ export class ApiService {
     return this.http.get<Paginated<T>>(url, { params: this.buildParams(params) });
   }
 
+  protected getBlob(url: string): Observable<Blob> {
+    return this.http.get(url, { responseType: 'blob' });
+  }
+
   private buildParams(obj?: Record<string, any>): HttpParams | undefined {
     if (!obj) return undefined;
     let params = new HttpParams();

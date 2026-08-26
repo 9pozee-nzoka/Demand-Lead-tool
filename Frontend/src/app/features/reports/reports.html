@@ -1,0 +1,131 @@
+<app-page-header title="Reports" subtitle="Revenue, funnel and keyword performance summaries">
+  <!-- Date range picker -->
+  <div class="report-range">
+    <input type="date" class="form-input report-range__input"
+      [ngModel]="fromDate()" (ngModelChange)="fromDate.set($event)" />
+    <span class="report-range__sep">to</span>
+    <input type="date" class="form-input report-range__input"
+      [ngModel]="toDate()" (ngModelChange)="toDate.set($event)" />
+    <button class="btn btn--primary btn--sm" (click)="applyRange()">
+      <span class="material-symbols-rounded">refresh</span> Apply
+    </button>
+  </div>
+</app-page-header>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else {
+
+  <!-- ── Revenue stat cards ── -->
+  <div class="stat-grid">
+    <app-stat-card label="Total Revenue"
+      [value]="(revenue()?.total_revenue ?? 0) | currencyKe"
+      icon="payments" color="success" />
+    <app-stat-card label="Deals Won"
+      [value]="revenue()?.won_deals ?? 0"
+      icon="check_circle" color="primary" />
+    <app-stat-card label="Avg Deal Value"
+      [value]="(revenue()?.avg_deal_value ?? 0) | currencyKe"
+      icon="bar_chart" color="warning" />
+    <app-stat-card label="Conversion Rate"
+      [value]="(funnel()?.conversion_rate ?? 0) + '%'"
+      icon="conversion_path" color="primary" />
+  </div>
+
+  <!-- ── Two-column grid ── -->
+  <div class="report-grid">
+
+    <!-- Monthly revenue bar chart -->
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">Monthly Revenue</h2>
+      </div>
+      @if (!revenue()?.monthly?.length) {
+        <p class="report-empty">No revenue data for this period.</p>
+      } @else {
+        <div class="bar-chart">
+          @for (m of revenue()!.monthly; track m.month) {
+            <div class="bar-chart__row">
+              <span class="bar-chart__label">{{ m.month }}</span>
+              <div class="bar-chart__track">
+                <div class="bar-chart__bar" [style.width.%]="barWidth(m.revenue)">
+                  <span class="bar-chart__val">{{ m.revenue | currencyKe }}</span>
+                </div>
+              </div>
+              <span class="bar-chart__count">{{ m.deals }} deal{{ m.deals === 1 ? '' : 's' }}</span>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Funnel summary -->
+    <div class="card">
+      <div class="card__header">
+        <h2 class="card__title">Lead Funnel</h2>
+      </div>
+      @if (funnel()) {
+        @let f = funnel()!;
+        <div class="funnel-report">
+          @for (step of [
+            {label:'Opportunities', val: f.opportunities, base: f.opportunities, color:'#6366f1'},
+            {label:'Leads',         val: f.leads,         base: f.opportunities, color:'#3b82f6'},
+            {label:'Qualified',     val: f.qualified,     base: f.leads,         color:'#0ea5e9'},
+            {label:'Deals',         val: f.deals,         base: f.leads,         color:'#10b981'},
+            {label:'Won',           val: f.won_deals,     base: f.deals,         color:'#22c55e'}
+          ]; track step.label) {
+            <div class="funnel-report__step">
+              <span class="funnel-report__label">{{ step.label }}</span>
+              <div class="funnel-report__bar-wrap">
+                <div class="funnel-report__bar"
+                  [style.width.%]="funnelPercent(step.val, step.base)"
+                  [style.background]="step.color"></div>
+              </div>
+              <span class="funnel-report__val">{{ step.val | number }}</span>
+            </div>
+          }
+          <div class="funnel-report__rates">
+            <span>Qualification rate: <strong>{{ f.qualification_rate }}%</strong></span>
+            <span>Conversion rate: <strong>{{ f.conversion_rate }}%</strong></span>
+          </div>
+        </div>
+      }
+    </div>
+
+  </div><!-- /report-grid -->
+
+  <!-- ── CSV Exports ── -->
+  <div class="card">
+    <div class="card__header">
+      <h2 class="card__title">Export data</h2>
+      <span class="text-sm text-muted">{{ fromDate() }} → {{ toDate() }}</span>
+    </div>
+    <div class="export-grid">
+      @for (ex of [
+        {type:'leads',    label:'Leads',    icon:'person_search', desc:'All captured leads with scores and status'},
+        {type:'deals',    label:'Deals',    icon:'business_center',desc:'All deals with value, stage and outcome'},
+        {type:'keywords', label:'Keywords', icon:'manage_search', desc:'Keyword performance with interest and growth'}
+      ]; track ex.type) {
+        <div class="export-card">
+          <div class="export-card__icon">
+            <span class="material-symbols-rounded">{{ ex.icon }}</span>
+          </div>
+          <div class="export-card__info">
+            <span class="export-card__label">{{ ex.label }}</span>
+            <span class="export-card__desc">{{ ex.desc }}</span>
+          </div>
+          <button class="btn btn--ghost btn--sm"
+            [disabled]="downloading() === ex.type"
+            (click)="download(ex.type)">
+            @if (downloading() === ex.type) {
+              <span class="btn__spinner"></span> Downloading…
+            } @else {
+              <span class="material-symbols-rounded">download</span> CSV
+            }
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+
+}

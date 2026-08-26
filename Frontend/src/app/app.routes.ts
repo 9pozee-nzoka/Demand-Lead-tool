@@ -2,8 +2,15 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { roleGuard } from './core/guards/role.guard';
 import { Shell } from './layout/shell/shell';
+import { ErrorPage } from './shared/components/error-page/error-page';
 
 export const routes: Routes = [
+
+  // ── Super-admin panel (completely separate — lazy-loaded) ───────────────
+  {
+    path: 'admin',
+    loadChildren: () => import('./admin/admin.routes').then(m => m.adminRoutes),
+  },
 
   // ── Public auth routes (no shell) ──────────────────────────────────────
   {
@@ -20,6 +27,13 @@ export const routes: Routes = [
     path: 'forgot-password',
     loadComponent: () => import('./features/auth/forgot-password/forgot-password').then(m => m.ForgotPassword),
     title: 'Reset password — DemandLead',
+  },
+
+  // ── Public landing page capture (no shell, no auth) ─────────────────────
+  {
+    path: 'capture/:slug',
+    loadComponent: () => import('./features/capture/capture-page').then(m => m.CapturePage),
+    // Title set dynamically from page data in the component
   },
 
   // ── Authenticated routes (inside shell) ────────────────────────────────
@@ -149,6 +163,26 @@ export const routes: Routes = [
     ],
   },
 
+  // ── Error pages ────────────────────────────────────────────────────────
+  {
+    path: '403',
+    component: ErrorPage,
+    data: { code: 403 },
+    title: 'Access denied — DemandLead',
+  },
+  {
+    path: '404',
+    component: ErrorPage,
+    data: { code: 404 },
+    title: 'Not found — DemandLead',
+  },
+  {
+    path: '500',
+    component: ErrorPage,
+    data: { code: 500 },
+    title: 'Server error — DemandLead',
+  },
+
   // ── Fallback ───────────────────────────────────────────────────────────
-  { path: '**', redirectTo: 'dashboard' },
+  { path: '**', component: ErrorPage, data: { code: 404 }, title: 'Not found — DemandLead' },
 ];

@@ -21,8 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Custom middleware aliases
         $middleware->alias([
-            'tenant' => \App\Http\Middleware\EnsureSameTenant::class,
-            'role'   => \App\Http\Middleware\CheckRole::class,
+            'tenant'       => \App\Http\Middleware\EnsureSameTenant::class,
+            'role'         => \App\Http\Middleware\CheckRole::class,
+            'limit'        => \App\Http\Middleware\CheckPlanLimit::class,
+            'super.admin'  => \App\Http\Middleware\EnsureSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

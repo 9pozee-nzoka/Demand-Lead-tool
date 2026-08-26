@@ -1,0 +1,246 @@
+<!-- Page header -->
+<div class="admin-page-header">
+  <div>
+    <h1 class="admin-page-title">Organizations</h1>
+    <p class="admin-page-sub">
+      {{ page()?.total | number }} tenants registered
+    </p>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="org-toolbar">
+  <div class="org-search">
+    <span class="material-symbols-rounded">search</span>
+    <input [ngModel]="search()" (ngModelChange)="search.set($event)"
+      (keydown.enter)="applySearch()" placeholder="Search by name or slug…" />
+  </div>
+  <select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event); applySearch()">
+    <option value="">All statuses</option>
+    <option value="active">Active</option>
+    <option value="suspended">Suspended</option>
+  </select>
+  <button class="org-toolbar__btn" (click)="applySearch()">
+    <span class="material-symbols-rounded">refresh</span>
+  </button>
+</div>
+
+@if (loading()) {
+  <app-admin-loading-spinner />
+} @else {
+  <div class="org-table-wrap">
+    <table class="org-table">
+      <thead>
+        <tr>
+          <th>Organisation</th>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Users</th>
+          <th>Projects</th>
+          <th>Country</th>
+          <th>Joined</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (org of items(); track org.id) {
+          <tr (click)="openOrg(org.id)">
+            <td>
+              <div class="org-name-cell">
+                <div class="org-avatar">{{ org.name[0].toUpperCase() }}</div>
+                <div>
+                  <div class="org-name">{{ org.name }}</div>
+                  <div class="org-slug">{{ org.slug }}</div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="plan-pill" [style.background]="planColor(org.plan?.slug ?? 'free')">
+                {{ org.plan?.name ?? 'Free' }}
+              </span>
+            </td>
+            <td><span [class]="statusClass(org.status)">{{ org.status }}</span></td>
+            <td class="num-cell">{{ org.users_count | number }}</td>
+            <td class="num-cell">{{ org.projects_count | number }}</td>
+            <td class="text-muted">{{ org.country ?? '—' }}</td>
+            <td class="text-muted">{{ org.created_at | date:'MMM d, y' }}</td>
+            <td class="action-cell" (click)="$event.stopPropagation()">
+              <button class="action-btn" (click)="openOrg(org.id)" title="View details">
+                <span class="material-symbols-rounded">chevron_right</span>
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  @if ((page()?.last_page ?? 1) > 1) {
+    <div class="org-pagination">
+      <button class="pag-btn" [disabled]="page()!.current_page <= 1" (click)="prevPage()">
+        <span class="material-symbols-rounded">chevron_left</span>
+      </button>
+      <span>Page {{ page()!.current_page }} of {{ page()!.last_page }}</span>
+      <button class="pag-btn" [disabled]="page()!.current_page >= page()!.last_page" (click)="nextPage()">
+        <span class="material-symbols-rounded">chevron_right</span>
+      </button>
+    </div>
+  }
+}
+
+<!-- ── Org detail drawer ── -->
+@if (drawerOpen()) {
+  <div class="drawer-backdrop" (click)="closeDrawer()">
+    <div class="org-drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="Organisation detail">
+
+      @if (!activeOrg()) {
+        <div style="padding:40px;display:flex;justify-content:center;">
+          <app-admin-loading-spinner />
+        </div>
+      } @else {
+        @let org = activeOrg()!;
+
+        <!-- Drawer header -->
+        <div class="org-drawer__header">
+          <div class="org-drawer__title-row">
+            <div class="org-drawer__avatar">{{ org.organization.name[0].toUpperCase() }}</div>
+            <div>
+              <h2 class="org-drawer__name">{{ org.organization.name }}</h2>
+              <span [class]="statusClass(org.organization.status)">{{ org.organization.status }}</span>
+            </div>
+          </div>
+          <button class="drawer-close" (click)="closeDrawer()" aria-label="Close">
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+
+        <!-- Plan + subscription -->
+        <div class="org-drawer__plan-row">
+          @if (org.organization.plan) {
+            <span class="plan-pill" [style.background]="planColor(org.organization.plan.slug)">
+              {{ org.organization.plan.name }}
+            </span>
+            <span class="text-muted-sm">KSh {{ org.organization.plan.monthly_price | number }}/mo</span>
+          }
+          @if (org.organization.active_subscription) {
+            <span class="sub-status">
+              Sub: {{ org.organization.active_subscription.status }}
+              · renews {{ org.organization.active_subscription.renewal_at | date:'MMM d, y' }}
+            </span>
+          }
+        </div>
+
+        <!-- Stats row -->
+        <div class="org-stats-row">
+          @for (s of [
+            {label:'Keywords',     v: org.stats['keywords']},
+            {label:'Leads',        v: org.stats['leads']},
+            {label:'Opportunities',v: org.stats['opportunities']},
+            {label:'Deals',        v: org.stats['deals']},
+            {label:'Revenue',      v: org.stats['revenue'], currency: true}
+          ]; track s.label) {
+            <div class="org-stat">
+              <span class="org-stat__val">
+                @if (s.currency) { KSh {{ s.v | number:'1.0-0' }} }
+                @else { {{ s.v | number }} }
+              </span>
+              <span class="org-stat__lbl">{{ s.label }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- Usage meters -->
+        <div class="drawer-section">
+          <div class="drawer-section__title">Usage — {{ org.usage.period }}</div>
+          <div class="usage-meters">
+            @for (entry of usageEntries(org.usage.usage); track entry[0]) {
+              @let metric = entry[1];
+              <div class="um-row">
+                <span class="um-label">{{ metricLabel(entry[0]) }}</span>
+                <div class="um-track">
+                  <div class="um-fill"
+                    [style.width.%]="metric.percent"
+                    [style.background]="metric.exceeded ? '#ef4444' : '#6366f1'">
+                  </div>
+                </div>
+                <span class="um-val">
+                  {{ metric.current }}/{{ metric.unlimited ? '∞' : metric.limit }}
+                </span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Team -->
+        @if (org.organization.users?.length) {
+          <div class="drawer-section">
+            <div class="drawer-section__title">Team ({{ org.organization.users.length }})</div>
+            <div class="team-list">
+              @for (u of org.organization.users.slice(0,6); track u.id) {
+                <div class="team-row">
+                  <div class="team-avatar">{{ u.name[0].toUpperCase() }}</div>
+                  <div class="team-info">
+                    <span class="team-name">{{ u.name }}</span>
+                    <span class="team-email">{{ u.email }}</span>
+                  </div>
+                  <span class="role-pill role-pill--{{ u.role }}">{{ u.role }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Recent audit log -->
+        @if (org.audit_log?.length) {
+          <div class="drawer-section">
+            <div class="drawer-section__title">Recent activity</div>
+            <div class="audit-list">
+              @for (log of org.audit_log.slice(0, 8); track log.id) {
+                <div class="audit-row">
+                  <span class="audit-action">{{ log.action }}</span>
+                  <span class="audit-by">{{ log.user?.name ?? 'System' }}</span>
+                  <span class="audit-time">{{ log.created_at | date:'MMM d, HH:mm' }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Action buttons -->
+        <div class="org-drawer__actions">
+          <!-- Impersonate -->
+          <button class="action-pill action-pill--primary"
+            [disabled]="actioning() || org.organization.status === 'suspended'"
+            (click)="impersonate(org.organization.id)">
+            @if (actioning()) { <span class="spin"></span> }
+            @else { <span class="material-symbols-rounded">person_pin</span> }
+            Impersonate owner
+          </button>
+
+          <!-- Suspend / activate toggle -->
+          @if (org.organization.status === 'active') {
+            @if (!confirmSuspend()) {
+              <button class="action-pill action-pill--danger" (click)="confirmSuspend.set(true)">
+                <span class="material-symbols-rounded">block</span> Suspend
+              </button>
+            } @else {
+              <div class="confirm-suspend">
+                <input type="text" placeholder="Reason (optional)"
+                  [ngModel]="suspendReason()" (ngModelChange)="suspendReason.set($event)" />
+                <button class="action-pill action-pill--danger" [disabled]="actioning()"
+                  (click)="setStatus('suspended')">Confirm suspend</button>
+                <button class="action-pill action-pill--ghost" (click)="confirmSuspend.set(false)">Cancel</button>
+              </div>
+            }
+          } @else {
+            <button class="action-pill action-pill--success" [disabled]="actioning()"
+              (click)="setStatus('active')">
+              <span class="material-symbols-rounded">check_circle</span> Reactivate
+            </button>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}

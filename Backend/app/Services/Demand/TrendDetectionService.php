@@ -19,10 +19,10 @@ use Illuminate\Support\Collection;
  */
 class TrendDetectionService
 {
-    private float $risingThreshold;
-    private float $rapidThreshold;
-    private float $spikeThreshold;
-    private float $decliningThreshold;
+    protected float $risingThreshold;
+    protected float $rapidThreshold;
+    protected float $spikeThreshold;
+    protected float $decliningThreshold;
 
     public function __construct()
     {

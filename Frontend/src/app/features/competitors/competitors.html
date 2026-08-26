@@ -1,0 +1,80 @@
+<app-page-header title="Competitor Intelligence"
+  subtitle="Keywords where competitors are driving search volume in the last 14 days">
+  <!-- Competition threshold filter -->
+  <div class="comp-filter">
+    @for (f of [{label:'All (50%+)',v:0.5},{label:'High (60%+)',v:0.6},{label:'Very High (80%+)',v:0.8}]; track f.v) {
+      <button class="comp-filter-btn" [class.comp-filter-btn--active]="minCompetition()===f.v"
+        (click)="setFilter(f.v)">{{ f.label }}</button>
+    }
+  </div>
+</app-page-header>
+
+<!-- Context banner -->
+<div class="info-banner">
+  <span class="material-symbols-rounded">info</span>
+  <p>Competitor signals are derived from <strong>permitted public search demand data</strong>
+    (Google Trends relative competition index). No private competitor data is collected.</p>
+</div>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (signals().length === 0) {
+  <app-empty-state icon="visibility" title="No competitor signals yet"
+    message="Competitor signals appear once keywords accumulate competition data from demand collection runs." />
+} @else {
+
+  <!-- Summary cards -->
+  <div class="comp-summary">
+    @for (level of ['very_high','high','medium']; track level) {
+      @let count = signals().filter(s => s.competitor_level === level).length;
+      @if (count > 0) {
+        <div class="comp-summary-card" [class]="'comp-summary-card--' + level">
+          <span class="comp-summary-card__val">{{ count }}</span>
+          <span class="comp-summary-card__lbl">{{ level | titlecase }} competition</span>
+        </div>
+      }
+    }
+  </div>
+
+  <div class="table-wrap card" style="padding:0">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Keyword</th>
+          <th>Competition</th>
+          <th>Level</th>
+          <th>Intent</th>
+          <th>Interest</th>
+          <th>Growth</th>
+          <th>Project</th>
+          <th>Location</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (s of signals(); track s.keyword + s.date) {
+          <tr>
+            <td class="font-medium">{{ s.keyword }}</td>
+            <td>
+              <div class="comp-bar">
+                <div class="comp-bar__fill" [style.width.%]="competitionBar(s.competition)"
+                  [class]="'comp-bar__fill--' + s.competitor_level"></div>
+                <span class="comp-bar__val">{{ s.competition | number:'1.0-0' }}%</span>
+              </div>
+            </td>
+            <td><app-badge [variant]="levelVariant(s.competitor_level)">{{ s.competitor_level }}</app-badge></td>
+            <td><app-badge [variant]="intentVariant(s.intent)">{{ s.intent }}</app-badge></td>
+            <td class="text-sm">{{ s.interest }}</td>
+            <td class="text-sm">
+              @if (s.growth > 0) { <span class="text-success">+{{ s.growth | number:'1.0-1' }}%</span> }
+              @else { <span class="text-muted">{{ s.growth | number:'1.0-1' }}%</span> }
+            </td>
+            <td class="text-sm text-muted">{{ s.project }}</td>
+            <td class="text-sm text-muted">{{ s.geo }}</td>
+            <td class="text-sm text-muted">{{ s.date }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

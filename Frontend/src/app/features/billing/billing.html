@@ -1,0 +1,197 @@
+<app-page-header title="Billing" subtitle="Your subscription, plan limits and usage this month" />
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else if (snapshot()) {
+
+  @let snap = snapshot()!;
+
+  <!-- ── At-limit warning banner ── -->
+  @if (snap.at_limit) {
+    <div class="limit-banner">
+      <span class="material-symbols-rounded">warning</span>
+      <div>
+        <strong>You have reached one or more plan limits.</strong>
+        Some features may be unavailable until you upgrade or the period resets.
+      </div>
+      @if (isOwner()) {
+        <button class="btn btn--primary btn--sm limit-banner__cta">
+          <span class="material-symbols-rounded">upgrade</span> Upgrade plan
+        </button>
+      }
+    </div>
+  }
+
+  <!-- ── Two-column layout ── -->
+  <div class="billing-grid">
+
+    <!-- Left: Current plan + subscription -->
+    <div class="billing-left">
+
+      <div class="plan-card card">
+        <div class="plan-card__header">
+          <div class="plan-card__icon">
+            <span class="material-symbols-rounded">workspace_premium</span>
+          </div>
+          <div>
+            <div class="plan-card__name">{{ snap.plan.name }}</div>
+            <div class="plan-card__price">
+              @if (snap.plan.monthly_price > 0) {
+                {{ snap.plan.monthly_price | currencyKe }}<span class="plan-card__period">/month</span>
+              } @else {
+                <span class="plan-card__free">Free tier</span>
+              }
+            </div>
+          </div>
+        </div>
+
+        @if (snap.subscription) {
+          <div class="plan-card__sub-row">
+            <app-badge [variant]="subStatusVariant(snap.subscription.status)">
+              {{ snap.subscription.status }}
+            </app-badge>
+            @if (snap.subscription.renewal_at) {
+              <span class="text-sm text-muted">
+                Renews {{ snap.subscription.renewal_at | date:'MMM d, y' }}
+              </span>
+            }
+          </div>
+        }
+
+        @if (snap.plan.features?.length) {
+          <ul class="plan-features">
+            @for (feat of snap.plan.features; track feat) {
+              <li class="plan-features__item">
+                <span class="material-symbols-rounded">check</span>
+                {{ feat }}
+              </li>
+            }
+          </ul>
+        }
+
+        @if (isOwner()) {
+          <div class="plan-card__actions">
+            <button class="btn btn--ghost btn--sm">
+              <span class="material-symbols-rounded">receipt_long</span> Billing history
+            </button>
+            <button class="btn btn--primary btn--sm">
+              <span class="material-symbols-rounded">upgrade</span> Upgrade
+            </button>
+          </div>
+        }
+      </div>
+
+    </div>
+
+    <!-- Right: Usage meters -->
+    <div class="billing-right">
+
+      <div class="card">
+        <div class="card__header">
+          <h2 class="card__title">Usage — {{ snap.period }}</h2>
+        </div>
+
+        <div class="usage-meters">
+          @for (entry of usageEntries(); track entry[0]) {
+            @let key = entry[0]; @let metric = entry[1];
+            <div class="meter" [class.meter--exceeded]="metric.exceeded">
+              <div class="meter__header">
+                <div class="meter__label-row">
+                  <span class="material-symbols-rounded meter__icon">
+                    {{ metricMeta[key]?.icon ?? 'bar_chart' }}
+                  </span>
+                  <span class="meter__label">{{ metricMeta[key]?.label ?? key }}</span>
+                </div>
+                <div class="meter__values">
+                  <span class="meter__current">{{ metric.current | number }}</span>
+                  <span class="meter__sep">/</span>
+                  @if (metric.unlimited) {
+                    <span class="meter__limit">∞</span>
+                  } @else {
+                    <span class="meter__limit">{{ metric.limit | number }}</span>
+                  }
+                </div>
+              </div>
+
+              @if (!metric.unlimited) {
+                <div class="meter__track">
+                  <div class="meter__fill"
+                    [style.width.%]="metric.percent"
+                    [style.background]="barColor(metric)">
+                  </div>
+                </div>
+                <div class="meter__footer">
+                  @if (metric.exceeded) {
+                    <span class="meter__over">Limit reached</span>
+                  } @else {
+                    <span class="meter__remain">
+                      {{ metric.remaining | number }} remaining
+                    </span>
+                    <span class="meter__percent">{{ metric.percent }}%</span>
+                  }
+                </div>
+              } @else {
+                <div class="meter__unlimited-label">Unlimited</div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /billing-grid -->
+
+  <!-- ── Plan comparison ── -->
+  @if (plans().length > 1) {
+    <div class="plans-section">
+      <h2 class="plans-section__title">Available plans</h2>
+      <div class="plans-grid">
+        @for (plan of plans(); track plan.id) {
+          <div class="plan-tile card"
+            [class.plan-tile--current]="isCurrentPlan(plan)"
+            [class.plan-tile--popular]="plan.slug === 'growth'">
+
+            @if (plan.slug === 'growth') {
+              <div class="plan-tile__popular-badge">Most popular</div>
+            }
+
+            <div class="plan-tile__name">{{ plan.name }}</div>
+            <div class="plan-tile__price">
+              @if (plan.monthly_price > 0) {
+                {{ plan.monthly_price | currencyKe }}<span class="plan-tile__period">/mo</span>
+              } @else {
+                Free
+              }
+            </div>
+
+            <ul class="plan-tile__limits">
+              @for (entry of (plan.limits | keyvalue); track entry.key) {
+                @if (metricMeta[entry.key]) {
+                  <li>
+                    <span class="material-symbols-rounded">check_small</span>
+                    @if (entry.value === -1) {
+                      Unlimited {{ metricMeta[entry.key].label | lowercase }}
+                    } @else {
+                      {{ entry.value }} {{ metricMeta[entry.key].label | lowercase }}
+                    }
+                  </li>
+                }
+              }
+            </ul>
+
+            @if (isCurrentPlan(plan)) {
+              <div class="plan-tile__current-label">Current plan</div>
+            } @else if (isOwner()) {
+              <button class="btn btn--primary btn--full">
+                {{ plan.monthly_price > (snap.plan.monthly_price ?? 0) ? 'Upgrade' : 'Downgrade' }}
+              </button>
+            }
+
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+}

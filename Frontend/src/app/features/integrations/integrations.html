@@ -1,0 +1,166 @@
+<app-page-header title="Integrations" subtitle="Connect data sources and delivery channels">
+  <span class="text-sm text-muted">{{ sources().length }} connected</span>
+</app-page-header>
+
+@if (loading()) {
+  <app-loading-spinner [full]="true" />
+} @else {
+
+  <!-- ── Available providers ── -->
+  <h2 class="section-title">Available integrations</h2>
+  <div class="provider-grid">
+    @for (p of available(); track p.type) {
+      <div class="provider-card card" [class.provider-card--connected]="isConnected(p.type)">
+        <div class="provider-card__icon">
+          <span class="material-symbols-rounded">{{ p.icon }}</span>
+        </div>
+        <div class="provider-card__body">
+          <div class="provider-card__label-row">
+            <span class="provider-card__label">{{ p.label }}</span>
+            @if (isConnected(p.type)) {
+              <span class="connected-badge">
+                <span class="material-symbols-rounded">check_circle</span> Connected
+              </span>
+            }
+          </div>
+          <span class="provider-card__desc">{{ p.desc }}</span>
+        </div>
+        <button class="btn btn--sm"
+          [class]="isConnected(p.type) ? 'btn--ghost' : 'btn--primary'"
+          (click)="openAdd(p)">
+          {{ isConnected(p.type) ? 'Add another' : 'Connect' }}
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- ── Active integrations ── -->
+  @if (sources().length > 0) {
+    <h2 class="section-title" style="margin-top:28px">Active connections</h2>
+    <div class="sources-list">
+      @for (source of sources(); track source.id) {
+        <div class="source-row card">
+          <div class="source-row__icon">
+            <span class="material-symbols-rounded">
+              {{ available().find(p => p.type === source.type)?.icon ?? 'extension' }}
+            </span>
+          </div>
+          <div class="source-row__info">
+            <span class="source-row__name">{{ source.name }}</span>
+            <span class="source-row__type">{{ source.type }}</span>
+            @if (source.last_sync_at) {
+              <span class="source-row__sync text-xs text-muted">
+                Last sync: {{ source.last_sync_at | timeAgo }}
+              </span>
+            }
+            @if (source.sync_meta?.['test_result']) {
+              <span class="source-row__test-result"
+                [class]="source.status === 'error' ? 'text-danger' : 'text-muted'">
+                {{ source.sync_meta!['test_result'] }}
+              </span>
+            }
+          </div>
+
+          <div class="source-row__actions">
+            <app-badge [variant]="statusVariant(source.status)">{{ source.status }}</app-badge>
+
+            <!-- Test connection button -->
+            <button class="btn btn--ghost btn--sm"
+              [disabled]="testing() === source.id"
+              (click)="testConnection(source)">
+              @if (testing() === source.id) {
+                <span class="btn__spinner"></span> Testing…
+              } @else {
+                <span class="material-symbols-rounded">wifi_tethering</span> Test
+              }
+            </button>
+
+            <!-- Pause / resume -->
+            <button class="btn btn--ghost btn--sm" (click)="toggleStatus(source)"
+              [title]="source.status === 'active' ? 'Pause' : 'Resume'">
+              <span class="material-symbols-rounded">
+                {{ source.status === 'active' ? 'pause_circle' : 'play_circle' }}
+              </span>
+            </button>
+
+            <!-- Remove -->
+            <button class="icon-btn icon-btn--danger" (click)="confirmRemove(source.id)" title="Remove">
+              <span class="material-symbols-rounded">delete</span>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+}
+
+<!-- ── Connect drawer ── -->
+@if (showForm()) {
+  <div class="drawer-backdrop" (click)="showForm.set(false)">
+    <div class="drawer" (click)="$event.stopPropagation()" role="dialog" aria-label="Connect integration">
+      <div class="drawer__header">
+        <h2 class="drawer__title">Connect {{ form.value.type | titlecase }}</h2>
+        <button class="icon-btn" (click)="showForm.set(false)" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <form [formGroup]="form" (ngSubmit)="connect()" novalidate class="drawer__body">
+
+        <div class="form-field">
+          <label class="form-label" for="int_name">Connection name <span class="required">*</span></label>
+          <input id="int_name" type="text" class="form-input" formControlName="name"
+            placeholder="e.g. Primary Google Trends" />
+        </div>
+
+        @if (credFields().length > 0) {
+          <div class="creds-section">
+            <div class="creds-section__title">
+              <span class="material-symbols-rounded">key</span> Credentials
+            </div>
+            <div formGroupName="creds">
+              @for (field of credFields(); track field.key) {
+                <div class="form-field">
+                  <label class="form-label" [for]="'cred_' + field.key">{{ field.label }}</label>
+                  @if (field.type === 'textarea') {
+                    <textarea [id]="'cred_' + field.key" class="form-input"
+                      [formControlName]="field.key" rows="4"
+                      placeholder="Paste your {{ field.label }} here…"></textarea>
+                  } @else {
+                    <input [id]="'cred_' + field.key" [type]="field.type" class="form-input"
+                      [formControlName]="field.key"
+                      placeholder="{{ field.label }}" />
+                  }
+                </div>
+              }
+            </div>
+            <div class="creds-note">
+              <span class="material-symbols-rounded">lock</span>
+              Credentials are encrypted with AES-256 before storage and never returned in API responses.
+            </div>
+          </div>
+        } @else {
+          <div class="no-creds-note">
+            <span class="material-symbols-rounded">check_circle</span>
+            This integration uses public data — no credentials required.
+          </div>
+        }
+
+        <div class="drawer__footer">
+          <button type="button" class="btn btn--ghost" (click)="showForm.set(false)">Cancel</button>
+          <button type="submit" class="btn btn--primary">
+            <span class="material-symbols-rounded">link</span> Connect
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Remove confirm -->
+@if (deleteId()) {
+  <app-confirm-modal title="Remove integration?"
+    message="This will disconnect the integration and stop data collection from this source."
+    confirmLabel="Remove" [danger]="true"
+    (confirmed)="remove()" (cancelled)="deleteId.set(null)" />
+}

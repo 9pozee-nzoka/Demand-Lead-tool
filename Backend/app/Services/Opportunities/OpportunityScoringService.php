@@ -117,7 +117,7 @@ class OpportunityScoringService
      * Geo score — how specific and populated the tracked location is.
      * City-level is highest value; no location defaults to a country-level estimate.
      */
-    public function scoreGeo(Keyword $keyword): float
+    public function scoreGeo(object $keyword): float
     {
         $locations = $keyword->locations;
 
@@ -171,7 +171,7 @@ class OpportunityScoringService
      * Uses keyword_measurements.competition (0-1 from Google Ads CPC data).
      * Falls back to a neutral score when no competition data exists.
      */
-    public function scoreCompetition(Keyword $keyword): float
+    public function scoreCompetition(object $keyword): float
     {
         $latestMeasurement = $keyword->latestMeasurement();
 
@@ -190,7 +190,7 @@ class OpportunityScoringService
      * produced leads or deals in the past?
      * Ranges from 0 (never converted) to 100 (strong history).
      */
-    public function scoreHistorical(Keyword $keyword): float
+    public function scoreHistorical(object $keyword): float
     {
         // Count leads linked to opportunities for this keyword
         $leadCount = \App\Models\Lead::whereHas('opportunity', fn ($q) => $q->where('keyword_id', $keyword->id))

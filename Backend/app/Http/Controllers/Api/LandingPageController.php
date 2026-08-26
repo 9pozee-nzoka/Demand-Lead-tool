@@ -115,6 +115,28 @@ class LandingPageController extends Controller
     }
 
     /**
+     * GET /api/v1/capture/{slug}  (public — no auth)
+     * Returns landing page data for the Angular capture form to render.
+     */
+    public function captureView(string $slug): JsonResponse
+    {
+        $page = LandingPage::where('slug', $slug)
+            ->published()
+            ->with(['project:id,name,country', 'opportunity:id,opportunity_score,trend_state'])
+            ->firstOrFail();
+
+        return response()->json([
+            'slug'        => $page->slug,
+            'title'       => $page->title,
+            'content'     => $page->content,
+            'template'    => $page->template,
+            'meta'        => $page->meta,
+            'project'     => $page->project,
+            'opportunity' => $page->opportunity,
+        ]);
+    }
+
+    /**
      * POST /api/v1/capture/{slug}  (public — no auth)
      * Receives lead submissions from the published landing page form.
      */

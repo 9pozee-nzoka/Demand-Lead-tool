@@ -1,0 +1,35 @@
+﻿> Building...
+ΓêÜ Building...
+Initial chunk files | Names               |  Raw size
+chunk-EJGQU5IY.js   | -                   | 917.39 kB | 
+chunk-PUC6N3OA.js   | -                   | 258.74 kB | 
+chunk-XXCQWQEH.js   | -                   | 258.16 kB | 
+styles.css          | styles              | 112.46 kB | 
+main.js             | main                |  77.83 kB | 
+chunk-WLF4PG4O.js   | -                   |   4.29 kB | 
+chunk-MDK6FKQQ.js   | -                   |   1.74 kB | 
+
+                    | Initial total       |   1.63 MB
+
+Lazy chunk files    | Names               |  Raw size
+chunk-R2VNJ6MS.js   | -                   | 165.08 kB | 
+chunk-QNFMNMPV.js   | browser             | 155.16 kB | 
+chunk-ICNBWFSN.js   | crm                 |  98.69 kB | 
+chunk-JZP6NTVM.js   | landing-pages       |  73.25 kB | 
+chunk-FF2BLGP5.js   | admin-organizations |  71.15 kB | 
+chunk-ZF4JWR66.js   | alerts              |  69.99 kB | 
+chunk-Q5DKZ4CO.js   | keywords            |  69.49 kB | 
+chunk-376P4TSJ.js   | leads               |  68.66 kB | 
+chunk-4UFRPSZX.js   | opportunities       |  54.47 kB | 
+chunk-HBAUKG2P.js   | dashboard           |  45.23 kB | 
+chunk-M4ADWRX2.js   | integrations        |  45.02 kB | 
+chunk-4CMQRSPW.js   | billing             |  44.28 kB | 
+chunk-EBO3YYHO.js   | projects            |  42.61 kB | 
+chunk-C6K63LQL.js   | capture-page        |  39.66 kB | 
+chunk-GDSN2V4S.js   | trends              |  32.27 kB | 
+...and 25 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [6.027 seconds] - 2026-08-26T20:24:23.588Z
+
+Output location: C:\projects\Demand-Lead Tool\Frontend\dist\Frontend
+

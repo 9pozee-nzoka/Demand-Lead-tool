@@ -71,3 +71,19 @@ Artisan::command('demand:collect {--keyword_id= : Collect a specific keyword ID 
 
     $this->info("Dispatched {$dispatched} ingestion jobs.");
 })->purpose('Manually trigger demand data collection');
+
+/**
+ * Promote a user to super-admin:
+ *   php artisan admin:promote admin@yourdomain.com
+ */
+Artisan::command('admin:promote {email : The email address to promote}', function () {
+    $user = \App\Models\User::where('email', $this->argument('email'))->firstOrFail();
+    $user->update(['is_super_admin' => true]);
+    $this->info("✓ {$user->email} is now a super-admin.");
+})->purpose('Promote a user to super-admin');
+
+Artisan::command('admin:demote {email : The email address to demote}', function () {
+    $user = \App\Models\User::where('email', $this->argument('email'))->firstOrFail();
+    $user->update(['is_super_admin' => false]);
+    $this->info("✓ {$user->email} super-admin access revoked.");
+})->purpose('Revoke super-admin access from a user');

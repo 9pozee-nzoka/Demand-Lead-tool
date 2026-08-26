@@ -70,12 +70,42 @@ class AlertDispatchService
             return false;
         }
 
-        // TODO Sprint 9: integrate regional SMS provider (Africa's Talking / Twilio)
-        // $smsService = app(SmsService::class);
-        // $smsService->send($alert->recipient, $alert->message);
+        $apiKey   = env('AT_API_KEY');
+        $username = env('AT_USERNAME');
 
-        Log::info("AlertDispatch: [STUB] SMS to {$alert->recipient} — {$alert->message}");
-        return false;
+        if (! $apiKey || ! $username) {
+            Log::warning("AlertDispatch: Africa's Talking credentials not set. Cannot send SMS.");
+            return false;
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'apiKey'       => $apiKey,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+                'Accept'       => 'application/json',
+            ])->asForm()->post('https://api.africastalking.com/version1/messaging', [
+                'username' => $username,
+                'to'       => $alert->recipient,
+                'message'  => substr($alert->message, 0, 160), // SMS max length
+                'from'     => env('AT_SENDER_ID', 'DemandLead'),
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $status = data_get($data, 'SMSMessageData.Recipients.0.status', '');
+                if (str_contains($status, 'Success')) {
+                    Log::info("AlertDispatch: SMS sent to {$alert->recipient}");
+                    return true;
+                }
+            }
+
+            Log::warning("AlertDispatch: SMS failed for alert #{$alert->id}: " . $response->body());
+            return false;
+
+        } catch (\Throwable $e) {
+            Log::error("AlertDispatch: SMS exception: " . $e->getMessage());
+            return false;
+        }
     }
 
     private function dispatchWhatsApp(Alert $alert): bool
