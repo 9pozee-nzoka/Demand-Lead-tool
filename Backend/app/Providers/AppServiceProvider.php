@@ -58,6 +58,7 @@ class AppServiceProvider extends ServiceProvider
         /**
          * General API — 60 requests per minute per authenticated user.
          * Falls back to IP for unauthenticated requests.
+         * Uses cache driver (file on shared hosting, Redis elsewhere).
          */
         RateLimiter::for('api', function (Request $request) {
             return $request->user()

@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SoarCorp — cPanel Cron Jobs
+# Add these in cPanel → Cron Jobs
+# Replace /home/mweelacr with your actual cPanel home path
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Laravel scheduler — runs every minute (required for demand collection)
+*  *  *  *  *  /usr/local/bin/php /home/mweelacr/demand-lead/artisan schedule:run >> /dev/null 2>&1
+
+# 2. Queue worker — processes jobs every 5 minutes (shared hosting safe)
+#    --stop-when-empty exits after processing the current batch so it doesn't
+#    run forever and hit cPanel's process limits.
+*/5  *  *  *  *  /usr/local/bin/php /home/mweelacr/demand-lead/artisan queue:work --queue=ingestion,processing,scoring,notifications,lead_workflows,default --stop-when-empty --tries=3 --timeout=120 >> /dev/null 2>&1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# How to add in cPanel:
+#   cPanel → Cron Jobs → Add New Cron Job
+#   Set "Minute" to * and paste the command (everything after the schedule part)
+# ─────────────────────────────────────────────────────────────────────────────
