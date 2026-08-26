@@ -1,0 +1,1 @@
+import{Fn as te}from"./chunk-Dajy4FE6.js";var t=`admin_token`;var r=class e{getToken(){return localStorage.getItem(t)}setToken(o){localStorage.setItem(t,o)}clear(){localStorage.removeItem(t)}hasToken(){return!!this.getToken()}static ɵfac=function(a){return new(a||e)};static ɵprov=te({token:e,factory:e.ɵfac,providedIn:`root`})};export{r as t};
