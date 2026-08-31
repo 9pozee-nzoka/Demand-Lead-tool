@@ -16,7 +16,7 @@ A **Demand-to-Lead Intelligence Platform** that detects rising market demand, sc
 
 | Layer       | Technology                    | Purpose                                         |
 |-------------|-------------------------------|-------------------------------------------------|
-| Backend     | Laravel 13.17 (PHP 8.3)       | REST API, queues, scheduler, business rules     |
+| Backend     | Laravel 11.x (PHP 8.3)        | REST API, queues, scheduler, business rules     |
 | Frontend    | Angular (separate project)    | Dashboard, CRM, analytics, configuration        |
 | Database    | PostgreSQL (SQLite for local) | Transactional and historical measurement data   |
 | Cache/Queue | Redis + Laravel Horizon       | Jobs, caching, notifications                    |
