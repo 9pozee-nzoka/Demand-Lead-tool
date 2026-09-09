@@ -8,132 +8,323 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Sprint 5 — Computes rolling baselines and growth % for a keyword.
- *
- * Baselines:
- *   7-day  — short-term momentum (is it rising this week?)
- *   30-day — recent normal (what is "normal" for this keyword?)
- *   90-day — long-term context / seasonality correction
- *
- * Growth formula (architecture spec §38):
- *   growth = (current_interest - baseline_30) / baseline_30 × 100
- *
- * Where current_interest is the 7-day rolling average (smoothed to
- * avoid single-day noise spikes being misclassified as trends).
+ * Baseline Service
+ * 
+ * Calculates rolling averages and detects anomalies:
+ * - 7-day baseline (short-term)
+ * - 30-day baseline (medium-term)
+ * - 90-day baseline (long-term)
+ * 
+ * Sprint 5
  */
 class BaselineService
 {
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
     /**
-     * Compute and persist growth % for all un-scored measurements of a keyword.
-     * Only measurements with growth = null are processed to avoid redundant work.
-     *
-     * @return array{baseline_7: float, baseline_30: float, baseline_90: float, latest_growth: float|null}
+     * Calculate all baselines for a keyword
      */
-    public function computeAndPersist(Keyword $keyword, string $source = 'google_trends'): array
+    public function calculateBaselines(Keyword $keyword): array
     {
         $measurements = KeywordMeasurement::where('keyword_id', $keyword->id)
-            ->where('source', $source)
-            ->orderBy('date')
-            ->get(['id', 'date', 'interest', 'growth', 'geo']);
+            ->orderBy('date', 'desc')
+            ->limit(90)
+            ->get();
 
-        if ($measurements->count() < 2) {
-            return ['baseline_7' => 0, 'baseline_30' => 0, 'baseline_90' => 0, 'latest_growth' => null];
+        if ($measurements->isEmpty()) {
+            return [
+                'baseline_7d' => 0,
+                'baseline_30d' => 0,
+                'baseline_90d' => 0,
+                'current_value' => 0,
+                'has_data' => false,
+            ];
         }
 
-        $baselines = $this->calculateBaselines($measurements);
-
-        // Update only measurements that don't have a growth value yet
-        $needsUpdate = $measurements->where('growth', null);
-
-        foreach ($needsUpdate as $measurement) {
-            $growthBaseline = $baselines['baseline_30'] > 0 ? $baselines['baseline_30'] : 1;
-            $growth = (($measurement->interest - $growthBaseline) / $growthBaseline) * 100;
-            $growth = round($growth, 2);
-
-            $measurement->update(['growth' => $growth]);
-        }
-
-        // Latest growth = growth of the most recent measurement
-        $latest       = $measurements->last();
-        $latestBaseline = $baselines['baseline_30'] > 0 ? $baselines['baseline_30'] : 1;
-        $latestGrowth = round((($latest->interest - $latestBaseline) / $latestBaseline) * 100, 2);
-
-        return array_merge($baselines, ['latest_growth' => $latestGrowth]);
-    }
-
-    /**
-     * Compute baselines without writing to DB — used by TrendDetectionService.
-     *
-     * @return array{baseline_7: float, baseline_30: float, baseline_90: float}
-     */
-    public function calculateBaselines(Collection $measurements): array
-    {
-        $now   = now();
-        $all   = $measurements->sortByDesc('date');
-
-        $b7  = $all->filter(fn ($m) => $this->daysAgo($m->date, $now) <= 7)
-                   ->avg('interest') ?? 0;
-        $b30 = $all->filter(fn ($m) => $this->daysAgo($m->date, $now) <= 30)
-                   ->avg('interest') ?? 0;
-        $b90 = $all->filter(fn ($m) => $this->daysAgo($m->date, $now) <= 90)
-                   ->avg('interest') ?? 0;
+        $current = $measurements->first()->interest ?? 0;
 
         return [
-            'baseline_7'  => round((float) $b7,  2),
-            'baseline_30' => round((float) $b30, 2),
-            'baseline_90' => round((float) $b90, 2),
+            'baseline_7d' => $this->calculate7DayBaseline($measurements),
+            'baseline_30d' => $this->calculate30DayBaseline($measurements),
+            'baseline_90d' => $this->calculate90DayBaseline($measurements),
+            'current_value' => $current,
+            'has_data' => true,
+            'data_points' => $measurements->count(),
         ];
     }
 
     /**
-     * Return a smoothed "current interest" — 7-day average — to reduce noise.
+     * Calculate 7-day rolling average
      */
-    public function currentInterest(Collection $measurements): float
+    public function calculate7DayBaseline(Collection $measurements): float
     {
-        $recent = $measurements
-            ->sortByDesc('date')
-            ->take(7)
-            ->avg('interest');
+        $recent = $measurements->take(7);
+        
+        if ($recent->count() < 3) {
+            return 0; // Not enough data
+        }
 
-        return round((float) ($recent ?? 0), 2);
+        $values = $recent->pluck('interest')->filter()->values();
+        
+        if ($values->isEmpty()) {
+            return 0;
+        }
+
+        return round($values->average(), 2);
     }
 
     /**
-     * Batch-recompute growth for all measurements of all active keywords
-     * for a given organization. Used by the scheduler to backfill history.
+     * Calculate 30-day rolling average
      */
-    public function batchRecompute(int $organizationId): int
+    public function calculate30DayBaseline(Collection $measurements): float
     {
-        $processed = 0;
+        $recent = $measurements->take(30);
+        
+        if ($recent->count() < 7) {
+            return 0; // Not enough data
+        }
 
-        Keyword::whereHas('project', fn ($q) => $q->where('organization_id', $organizationId))
-            ->where('status', 'active')
-            ->chunkById(50, function ($keywords) use (&$processed) {
-                foreach ($keywords as $keyword) {
-                    $sources = KeywordMeasurement::where('keyword_id', $keyword->id)
-                        ->distinct()
-                        ->pluck('source');
+        $values = $recent->pluck('interest')->filter()->values();
+        
+        if ($values->isEmpty()) {
+            return 0;
+        }
 
-                    foreach ($sources as $source) {
-                        $this->computeAndPersist($keyword, $source);
-                        $processed++;
-                    }
-                }
-            });
-
-        return $processed;
+        return round($values->average(), 2);
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    private function daysAgo(string $date, \Carbon\Carbon $now): int
+    /**
+     * Calculate 90-day rolling average
+     */
+    public function calculate90DayBaseline(Collection $measurements): float
     {
-        return (int) \Carbon\Carbon::parse($date)->diffInDays($now);
+        $recent = $measurements->take(90);
+        
+        if ($recent->count() < 14) {
+            return 0; // Not enough data
+        }
+
+        $values = $recent->pluck('interest')->filter()->values();
+        
+        if ($values->isEmpty()) {
+            return 0;
+        }
+
+        return round($values->average(), 2);
+    }
+
+    /**
+     * Calculate growth rate
+     */
+    public function calculateGrowthRate(float $current, float $baseline): float
+    {
+        if ($baseline == 0) {
+            return $current > 0 ? 100 : 0;
+        }
+
+        return round((($current - $baseline) / $baseline) * 100, 2);
+    }
+
+    /**
+     * Detect if current value is an anomaly
+     */
+    public function detectAnomaly(float $current, float $baseline, float $threshold = 50): bool
+    {
+        if ($baseline == 0) {
+            return false;
+        }
+
+        $growthRate = abs($this->calculateGrowthRate($current, $baseline));
+        
+        return $growthRate >= $threshold;
+    }
+
+    /**
+     * Detect spike (sudden increase)
+     */
+    public function detectSpike(float $current, float $baseline7d, float $baseline30d, float $threshold = 100): bool
+    {
+        // Spike: Current is significantly above short-term and long-term baseline
+        if ($baseline7d == 0 || $baseline30d == 0) {
+            return false;
+        }
+
+        $growth7d = $this->calculateGrowthRate($current, $baseline7d);
+        $growth30d = $this->calculateGrowthRate($current, $baseline30d);
+
+        return $growth7d >= $threshold && $growth30d >= ($threshold / 2);
+    }
+
+    /**
+     * Detect rising trend (consistent growth)
+     */
+    public function detectRisingTrend(float $baseline7d, float $baseline30d, float $baseline90d, float $threshold = 20): bool
+    {
+        // Rising: Short-term > Medium-term > Long-term
+        if ($baseline30d == 0 || $baseline90d == 0) {
+            return false;
+        }
+
+        $growth30d = $this->calculateGrowthRate($baseline7d, $baseline30d);
+        $growth90d = $this->calculateGrowthRate($baseline30d, $baseline90d);
+
+        return $growth30d >= $threshold && $growth90d >= ($threshold / 2);
+    }
+
+    /**
+     * Detect declining trend
+     */
+    public function detectDecliningTrend(float $baseline7d, float $baseline30d, float $baseline90d, float $threshold = -20): bool
+    {
+        // Declining: Short-term < Medium-term < Long-term
+        if ($baseline30d == 0 || $baseline90d == 0) {
+            return false;
+        }
+
+        $growth30d = $this->calculateGrowthRate($baseline7d, $baseline30d);
+        $growth90d = $this->calculateGrowthRate($baseline30d, $baseline90d);
+
+        return $growth30d <= $threshold && $growth90d <= ($threshold / 2);
+    }
+
+    /**
+     * Detect stable trend (minimal change)
+     */
+    public function detectStableTrend(float $baseline7d, float $baseline30d, float $threshold = 10): bool
+    {
+        if ($baseline30d == 0) {
+            return false;
+        }
+
+        $growth = abs($this->calculateGrowthRate($baseline7d, $baseline30d));
+
+        return $growth < $threshold;
+    }
+
+    /**
+     * Determine trend state based on baselines
+     */
+    public function determineTrendState(array $baselines): string
+    {
+        if (!$baselines['has_data']) {
+            return 'unknown';
+        }
+
+        $current = $baselines['current_value'];
+        $baseline7d = $baselines['baseline_7d'];
+        $baseline30d = $baselines['baseline_30d'];
+        $baseline90d = $baselines['baseline_90d'];
+
+        // Check for spike first (highest priority)
+        if ($this->detectSpike($current, $baseline7d, $baseline30d)) {
+            return 'spike';
+        }
+
+        // Check for rising trend
+        if ($this->detectRisingTrend($baseline7d, $baseline30d, $baseline90d)) {
+            return 'rising';
+        }
+
+        // Check for declining trend
+        if ($this->detectDecliningTrend($baseline7d, $baseline30d, $baseline90d)) {
+            return 'declining';
+        }
+
+        // Check for stable trend
+        if ($this->detectStableTrend($baseline7d, $baseline30d)) {
+            return 'stable';
+        }
+
+        // Check if emerging (new keyword with recent data)
+        if ($baselines['data_points'] < 30 && $current > 0) {
+            return 'emerging';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Calculate volatility (standard deviation)
+     */
+    public function calculateVolatility(Collection $measurements): float
+    {
+        if ($measurements->count() < 2) {
+            return 0;
+        }
+
+        $values = $measurements->pluck('interest')->filter()->values();
+        
+        if ($values->count() < 2) {
+            return 0;
+        }
+
+        $mean = $values->average();
+        $variance = $values->map(fn($value) => pow($value - $mean, 2))->average();
+        $stdDev = sqrt($variance);
+
+        return round($stdDev, 2);
+    }
+
+    /**
+     * Get baseline summary for display
+     */
+    public function getBaselineSummary(Keyword $keyword): array
+    {
+        $baselines = $this->calculateBaselines($keyword);
+        $measurements = KeywordMeasurement::where('keyword_id', $keyword->id)
+            ->orderBy('date', 'desc')
+            ->limit(30)
+            ->get();
+
+        $trendState = $this->determineTrendState($baselines);
+        $volatility = $this->calculateVolatility($measurements);
+
+        $growth7d = $this->calculateGrowthRate(
+            $baselines['current_value'],
+            $baselines['baseline_7d']
+        );
+
+        $growth30d = $this->calculateGrowthRate(
+            $baselines['current_value'],
+            $baselines['baseline_30d']
+        );
+
+        return [
+            'baselines' => $baselines,
+            'trend_state' => $trendState,
+            'volatility' => $volatility,
+            'growth_7d' => $growth7d,
+            'growth_30d' => $growth30d,
+            'is_anomaly' => $this->detectAnomaly($baselines['current_value'], $baselines['baseline_30d']),
+            'recommendation' => $this->getRecommendation($trendState, $growth7d, $growth30d),
+        ];
+    }
+
+    /**
+     * Get recommendation based on trend state
+     */
+    protected function getRecommendation(string $trendState, float $growth7d, float $growth30d): string
+    {
+        return match($trendState) {
+            'spike' => 'URGENT: Investigate spike immediately. High opportunity for quick action.',
+            'rising' => 'Strong upward trend detected. Consider increasing budget and creating content.',
+            'emerging' => 'New trend emerging. Monitor closely and prepare campaigns.',
+            'stable' => 'Steady interest. Maintain current strategy.',
+            'declining' => 'Declining interest. Review strategy or reallocate budget.',
+            'unknown' => 'Insufficient data. Continue monitoring.',
+            default => 'Monitor and analyze trend patterns.',
+        };
+    }
+
+    /**
+     * Batch calculate baselines for multiple keywords
+     */
+    public function batchCalculateBaselines(Collection $keywords): array
+    {
+        $results = [];
+
+        foreach ($keywords as $keyword) {
+            $results[$keyword->id] = $this->calculateBaselines($keyword);
+        }
+
+        return $results;
     }
 }

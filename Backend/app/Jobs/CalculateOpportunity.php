@@ -2,11 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\Keyword;
-use App\Models\KeywordMeasurement;
-use App\Services\Demand\BaselineService;
-use App\Services\Demand\TrendDetectionService;
+use App\Models\Opportunity;
 use App\Services\Opportunities\OpportunityScoringService;
+use App\Services\AI\AIService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,97 +13,133 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Sprint 7 — Score an opportunity based on:
- *
- *   growth_score      × 0.30  (trend state + growth magnitude)
- *   intent_score      × 0.25  (transactional > local > commercial > informational)
- *   geo_score         × 0.15  (city > county > region > country)
- *   volume_score      × 0.15  (relative interest 0-100)
- *   competition_score × 0.10  (lower competition = higher score)
- *   historical_score  × 0.05  (past conversion rate for this keyword)
- *
- * Persists an Opportunity record and chains SendAlert if score ≥ threshold.
- *
- * Queue : scoring
- * Chains: SendAlert (notifications queue) when score ≥ demand.alert_min_score
+ * Calculate Opportunity Job
+ * 
+ * Scores opportunities using:
+ * - Growth score (30%)
+ * - Intent score (25%)
+ * - Geo score (15%)
+ * - Volume score (15%)
+ * - Competition score (10%)
+ * - Historical score (5%)
+ * 
+ * Generates AI explanation of score
+ * 
+ * Queue: scoring
+ * Sprint 7
  */
 class CalculateOpportunity implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries   = 3;
-    public int $timeout = 60;
+    public $timeout = 120;
+    public $tries = 2;
 
-    public function backoff(): array
-    {
-        return [60, 300];
-    }
+    protected Opportunity $opportunity;
 
-    public function __construct(public readonly int $keywordId)
+    public function __construct(Opportunity $opportunity)
     {
+        $this->opportunity = $opportunity;
         $this->onQueue('scoring');
     }
 
-    // -------------------------------------------------------------------------
+    public function handle(OpportunityScoringService $scoringService, AIService $aiService): void
+    {
+        Log::info('Calculating opportunity score', [
+            'opportunity_id' => $this->opportunity->id,
+            'title' => $this->opportunity->title,
+        ]);
 
-    public function handle(
-        OpportunityScoringService $scorer,
-        BaselineService $baseline,
-        TrendDetectionService $trend,
-    ): void {
-        $keyword = Keyword::with([
-            'locations',
-            'project:id,organization_id,country',
-        ])->find($this->keywordId);
+        // Calculate score
+        $result = $scoringService->calculateScore($this->opportunity);
 
-        if (! $keyword || $keyword->status !== 'active') {
-            return;
-        }
-
-        // Score each source that has measurements for this keyword
-        $sources = KeywordMeasurement::where('keyword_id', $keyword->id)
-            ->whereNotNull('growth')
-            ->distinct()
-            ->pluck('source');
-
-        if ($sources->isEmpty()) {
-            Log::info("CalculateOpportunity: no growth data yet for keyword #{$this->keywordId}");
-            return;
-        }
-
-        $bestOpportunity = null;
-        $bestScore       = 0;
-
-        foreach ($sources as $source) {
-            $opportunity = $scorer->scoreKeyword($keyword, $source);
-
-            if ($opportunity && $opportunity->opportunity_score > $bestScore) {
-                $bestScore       = $opportunity->opportunity_score;
-                $bestOpportunity = $opportunity;
+        // Generate AI explanation if configured
+        $explanation = '';
+        if ($aiService->isConfigured()) {
+            try {
+                $explanation = $aiService->explainOpportunityScore($result['breakdown']);
+            } catch (\Exception $e) {
+                Log::warning('Failed to generate AI explanation', [
+                    'opportunity_id' => $this->opportunity->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $explanation = $this->generateFallbackExplanation($result);
             }
+        } else {
+            $explanation = $this->generateFallbackExplanation($result);
         }
 
-        if (! $bestOpportunity) {
-            Log::info("CalculateOpportunity: keyword #{$this->keywordId} scored below threshold.");
-            return;
+        // Update opportunity
+        $this->opportunity->update([
+            'opportunity_score' => $result['score'],
+            'priority' => $result['priority'],
+            'score_breakdown' => $result['breakdown'],
+            'score_explanation' => $explanation,
+            'scored_at' => now(),
+        ]);
+
+        Log::info('Successfully calculated opportunity score', [
+            'opportunity_id' => $this->opportunity->id,
+            'score' => $result['score'],
+            'priority' => $result['priority'],
+        ]);
+
+        // Update status if needed
+        if ($this->opportunity->status === 'detected') {
+            $this->opportunity->update(['status' => 'scored']);
+        }
+    }
+
+    /**
+     * Generate fallback explanation when AI is unavailable
+     */
+    protected function generateFallbackExplanation(array $result): string
+    {
+        $breakdown = $result['breakdown'];
+        $score = $result['score'];
+        $priority = $result['priority'];
+
+        $parts = [];
+
+        // Lead with priority
+        $parts[] = "This is a {$priority} priority opportunity (score: {$score}/100).";
+
+        // Find strongest factor
+        $factors = [
+            'growth_score' => 'demand growth',
+            'intent_score' => 'buyer intent',
+            'geo_score' => 'geographic targeting',
+            'volume_score' => 'search volume',
+        ];
+
+        arsort($breakdown);
+        $topFactor = array_key_first($breakdown);
+        
+        if (isset($factors[$topFactor])) {
+            $parts[] = "Strong " . $factors[$topFactor] . " signals detected.";
         }
 
-        Log::info(sprintf(
-            "CalculateOpportunity: keyword #%d scored %.1f (%s) — state: %s",
-            $this->keywordId,
-            $bestOpportunity->opportunity_score,
-            OpportunityScoringService::label($bestOpportunity->opportunity_score),
-            $bestOpportunity->trend_state,
-        ));
-
-        // Chain: fire alerts if score meets the minimum threshold
-        $alertMinScore = (float) config('demand.alert_min_score', 60);
-
-        if ($bestOpportunity->opportunity_score >= $alertMinScore) {
-            SendAlert::dispatch($bestOpportunity->id)->onQueue('notifications');
+        // Add context based on priority
+        if ($priority === 'very_high' || $priority === 'high') {
+            $parts[] = "Immediate action recommended.";
+        } elseif ($priority === 'moderate') {
+            $parts[] = "Good timing to act within 1-2 weeks.";
+        } else {
+            $parts[] = "Monitor and consider action when conditions improve.";
         }
 
-        // Chain: generate AI explanation (Sprint 7 stub — Sprint 8+ fills in)
-        GenerateOpportunityExplanation::dispatch($bestOpportunity->id)->onQueue('processing');
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Handle job failure
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('CalculateOpportunity job failed', [
+            'opportunity_id' => $this->opportunity->id,
+            'title' => $this->opportunity->title,
+            'error' => $exception->getMessage(),
+        ]);
     }
 }

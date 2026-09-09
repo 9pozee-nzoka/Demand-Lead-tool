@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,9 +11,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class LandingPage extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, BelongsToOrganization;
 
     protected $fillable = [
+        'organization_id',
         'project_id',
         'opportunity_id',
         'slug',
@@ -22,6 +24,8 @@ class LandingPage extends Model
         'meta',
         'status',
         'published_at',
+        'views',
+        'conversions',
     ];
 
     protected function casts(): array
@@ -35,6 +39,11 @@ class LandingPage extends Model
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
 
     public function project(): BelongsTo
     {

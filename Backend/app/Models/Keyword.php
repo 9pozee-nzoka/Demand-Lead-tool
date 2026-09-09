@@ -19,9 +19,38 @@ class Keyword extends Model
         'normalized_keyword',
         'category',
         'intent',
+        'match_type',
         'priority',
         'status',
+        'notes',
+        'trend_state',
+        'baseline_7d',
+        'baseline_30d',
+        'baseline_90d',
+        'current_interest',
+        'growth_rate_7d',
+        'growth_rate_30d',
+        'growth_rate_90d',
+        'volatility',
+        'last_measured_at',
+        'trend_updated_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'baseline_7d' => 'decimal:2',
+            'baseline_30d' => 'decimal:2',
+            'baseline_90d' => 'decimal:2',
+            'current_interest' => 'decimal:2',
+            'growth_rate_7d' => 'decimal:2',
+            'growth_rate_30d' => 'decimal:2',
+            'growth_rate_90d' => 'decimal:2',
+            'volatility' => 'decimal:2',
+            'last_measured_at' => 'datetime',
+            'trend_updated_at' => 'datetime',
+        ];
+    }
 
     // -------------------------------------------------------------------------
     // Relationships

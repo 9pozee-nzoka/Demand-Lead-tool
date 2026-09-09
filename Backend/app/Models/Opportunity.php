@@ -2,16 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Opportunity extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToOrganization;
 
     protected $fillable = [
+        'organization_id',
         'project_id',
         'keyword_id',
         'cluster_id',
@@ -23,13 +26,20 @@ class Opportunity extends Model
         'competition_score',
         'historical_score',
         'opportunity_score',
+        'score_breakdown',
+        'score_explanation',
+        'scored_at',
+        'priority',
         'title',
+        'description',
         'explanation',
         'recommended_actions',
         'trend_state',
         'status',
         'detected_at',
         'expires_at',
+        'dismissed_reason',
+        'dismissed_at',
     ];
 
     protected function casts(): array
@@ -42,9 +52,12 @@ class Opportunity extends Model
             'competition_score'   => 'decimal:2',
             'historical_score'    => 'decimal:2',
             'opportunity_score'   => 'decimal:2',
+            'score_breakdown'     => 'array',
             'recommended_actions' => 'array',
             'detected_at'         => 'datetime',
             'expires_at'          => 'datetime',
+            'scored_at'           => 'datetime',
+            'dismissed_at'        => 'datetime',
         ];
     }
 
@@ -92,6 +105,12 @@ class Opportunity extends Model
         return $this->hasMany(Lead::class);
     }
 
+    public function keywords(): BelongsToMany
+    {
+        return $this->belongsToMany(Keyword::class, 'keyword_opportunity')
+                    ->withTimestamps();
+    }
+
     // -------------------------------------------------------------------------
     // Scopes
     // -------------------------------------------------------------------------
@@ -109,6 +128,16 @@ class Opportunity extends Model
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    public function getPriorityAttribute(): string
+    {
+        return match (true) {
+            $this->opportunity_score >= 80 => 'very_high',
+            $this->opportunity_score >= 60 => 'high',
+            $this->opportunity_score >= 40 => 'moderate',
+            default                        => 'low',
+        };
+    }
 
     public function scoreLabel(): string
     {

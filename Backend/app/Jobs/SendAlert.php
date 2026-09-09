@@ -3,168 +3,304 @@
 namespace App\Jobs;
 
 use App\Models\Alert;
-use App\Models\AlertRule;
-use App\Models\Opportunity;
-use App\Services\Alerts\AlertDispatchService;
+use App\Models\User;
+use App\Services\Alerts\AfricasTalkingSmsProvider;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
- * Sprint 9-ready — Evaluate alert rules for an opportunity and create
- * Alert records. Channel delivery (SMS/email/WhatsApp) is delegated to
- * AlertDispatchService so this job stays clean.
- *
- * Implements: cooldown checks, deduplication, rule matching.
- *
- * Queue : notifications
- * Dispatched by: CalculateOpportunity when score ≥ threshold
+ * Send Alert Job
+ * 
+ * Delivers alerts via multiple channels:
+ * - Email
+ * - SMS (Africa's Talking)
+ * - In-app notification
+ * 
+ * Queue: notifications
+ * Sprint 9
  */
 class SendAlert implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries   = 3;
-    public int $timeout = 30;
+    public $timeout = 60;
+    public $tries = 3;
+    public $backoff = [60, 300, 900]; // 1min, 5min, 15min
 
-    public function backoff(): array
-    {
-        return [30, 120];
-    }
+    protected Alert $alert;
 
-    public function __construct(public readonly int $opportunityId)
+    public function __construct(Alert $alert)
     {
+        $this->alert = $alert;
         $this->onQueue('notifications');
     }
 
-    // -------------------------------------------------------------------------
-
-    public function handle(AlertDispatchService $dispatcher): void
+    public function handle(AfricasTalkingSmsProvider $smsProvider): void
     {
-        $opportunity = Opportunity::with([
-            'keyword',
-            'location',
-            'project.organization',
-        ])->find($this->opportunityId);
+        Log::info('Sending alert', [
+            'alert_id' => $this->alert->id,
+            'type' => $this->alert->alert_type,
+            'channels' => $this->alert->channels,
+        ]);
 
-        if (! $opportunity) {
+        $channels = $this->alert->channels ?? ['email', 'in_app'];
+        $recipients = $this->getRecipients();
+
+        if ($recipients->isEmpty()) {
+            Log::warning('No recipients found for alert', [
+                'alert_id' => $this->alert->id,
+            ]);
+            
+            $this->alert->update([
+                'sent_at' => now(),
+                'delivery_status' => 'no_recipients',
+            ]);
+            
             return;
         }
 
-        $orgId = $opportunity->project->organization_id;
+        $deliveryStatus = [];
 
-        // Load active rules scoped to this org and optionally this project
-        $rules = AlertRule::where('organization_id', $orgId)
-            ->where('status', 'active')
-            ->where(fn ($q) =>
-                $q->whereNull('project_id')
-                  ->orWhere('project_id', $opportunity->project_id)
-            )
-            ->get();
-
-        if ($rules->isEmpty()) {
-            // No rules configured — create a dashboard notification by default
-            $this->createDashboardAlert($opportunity, $orgId);
-            return;
+        // Send email
+        if (in_array('email', $channels)) {
+            $deliveryStatus['email'] = $this->sendEmail($recipients);
         }
 
-        $fired = 0;
+        // Send SMS
+        if (in_array('sms', $channels) && $smsProvider->isConfigured()) {
+            $deliveryStatus['sms'] = $this->sendSms($recipients, $smsProvider);
+        }
 
-        foreach ($rules as $rule) {
-            if (! $rule->matches($opportunity)) {
+        // Send in-app notification
+        if (in_array('in_app', $channels)) {
+            $deliveryStatus['in_app'] = $this->sendInApp($recipients);
+        }
+
+        // Update alert status
+        $overallStatus = $this->determineOverallStatus($deliveryStatus);
+        
+        $this->alert->update([
+            'sent_at' => now(),
+            'delivery_status' => $overallStatus,
+            'delivery_details' => $deliveryStatus,
+        ]);
+
+        Log::info('Alert sent successfully', [
+            'alert_id' => $this->alert->id,
+            'status' => $overallStatus,
+            'recipients' => $recipients->count(),
+        ]);
+    }
+
+    /**
+     * Get alert recipients
+     */
+    protected function getRecipients()
+    {
+        $recipients = collect();
+
+        // Get users based on alert rule recipients
+        if ($this->alert->alertRule) {
+            $recipientIds = $this->alert->alertRule->recipient_user_ids ?? [];
+            
+            if (!empty($recipientIds)) {
+                $recipients = User::whereIn('id', $recipientIds)
+                    ->where('organization_id', $this->alert->organization_id)
+                    ->where('status', 'active')
+                    ->get();
+            }
+        }
+
+        // Fallback: org admins and owners
+        if ($recipients->isEmpty()) {
+            $recipients = User::where('organization_id', $this->alert->organization_id)
+                ->where('status', 'active')
+                ->whereIn('role', ['owner', 'admin'])
+                ->get();
+        }
+
+        return $recipients;
+    }
+
+    /**
+     * Send email notifications
+     */
+    protected function sendEmail($recipients): array
+    {
+        $sent = 0;
+        $failed = 0;
+
+        foreach ($recipients as $recipient) {
+            if (empty($recipient->email)) {
+                $failed++;
                 continue;
             }
 
-            // Cooldown check — don't re-alert for the same opportunity within cooldown window
-            if ($this->inCooldown($rule, $opportunity)) {
-                Log::info("SendAlert: rule #{$rule->id} in cooldown for opportunity #{$this->opportunityId}");
-                continue;
+            try {
+                Mail::send('emails.alert', [
+                    'alert' => $this->alert,
+                    'recipient' => $recipient,
+                ], function($message) use ($recipient) {
+                    $message->to($recipient->email, $recipient->name)
+                            ->subject("Alert: {$this->alert->title}");
+                });
+
+                $sent++;
+            } catch (\Exception $e) {
+                Log::error('Failed to send alert email', [
+                    'alert_id' => $this->alert->id,
+                    'recipient_id' => $recipient->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $failed++;
             }
+        }
 
-            // Create alert records and dispatch to channels
-            foreach ($rule->channels ?? ['dashboard'] as $channel) {
-                $message = $this->buildMessage($opportunity);
+        return [
+            'sent' => $sent,
+            'failed' => $failed,
+            'status' => $failed === 0 ? 'success' : ($sent > 0 ? 'partial' : 'failed'),
+        ];
+    }
 
-                $alert = Alert::create([
-                    'organization_id' => $orgId,
-                    'opportunity_id'  => $opportunity->id,
-                    'alert_rule_id'   => $rule->id,
-                    'type'            => 'opportunity',
-                    'channel'         => $channel,
-                    'recipient'       => $this->resolveRecipient($rule, $channel),
-                    'message'         => $message,
-                    'payload'         => [
-                        'keyword'           => $opportunity->keyword?->keyword,
-                        'location'          => $opportunity->location?->city ?? $opportunity->location?->country,
-                        'opportunity_score' => $opportunity->opportunity_score,
-                        'trend_state'       => $opportunity->trend_state,
-                        'label'             => \App\Services\Opportunities\OpportunityScoringService::label($opportunity->opportunity_score),
+    /**
+     * Send SMS notifications
+     */
+    protected function sendSms($recipients, AfricasTalkingSmsProvider $smsProvider): array
+    {
+        $phones = $recipients->filter(fn($u) => !empty($u->phone))
+                            ->pluck('phone')
+                            ->toArray();
+
+        if (empty($phones)) {
+            return [
+                'sent' => 0,
+                'failed' => 0,
+                'status' => 'no_phones',
+            ];
+        }
+
+        $details = [
+            'keyword' => $this->alert->keyword?->term ?? '',
+            'score' => $this->alert->opportunity?->opportunity_score ?? '',
+            'growth' => $this->alert->keyword?->growth_rate_7d ?? '',
+        ];
+
+        $result = $smsProvider->sendAlert(
+            implode(',', $phones),
+            $this->alert->alert_type,
+            $this->alert->title,
+            array_filter($details)
+        );
+
+        return [
+            'sent' => $result['success'] ? count($phones) : 0,
+            'failed' => $result['success'] ? 0 : count($phones),
+            'status' => $result['success'] ? 'success' : 'failed',
+            'error' => $result['error'] ?? null,
+        ];
+    }
+
+    /**
+     * Send in-app notifications
+     */
+    protected function sendInApp($recipients): array
+    {
+        $sent = 0;
+
+        foreach ($recipients as $recipient) {
+            try {
+                $recipient->notifications()->create([
+                    'type' => 'App\\Notifications\\AlertNotification',
+                    'data' => [
+                        'alert_id' => $this->alert->id,
+                        'alert_type' => $this->alert->alert_type,
+                        'title' => $this->alert->title,
+                        'message' => $this->alert->message,
+                        'url' => $this->getAlertUrl(),
                     ],
-                    'status'  => 'pending',
-                    'sent_at' => null,
+                    'read_at' => null,
                 ]);
 
-                // Dispatch to the appropriate channel driver
-                $dispatcher->dispatch($alert);
-                $fired++;
+                $sent++;
+            } catch (\Exception $e) {
+                Log::error('Failed to create in-app notification', [
+                    'alert_id' => $this->alert->id,
+                    'recipient_id' => $recipient->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
-        Log::info("SendAlert: opportunity #{$this->opportunityId} fired {$fired} alerts.");
+        return [
+            'sent' => $sent,
+            'failed' => $recipients->count() - $sent,
+            'status' => $sent > 0 ? 'success' : 'failed',
+        ];
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    private function inCooldown(AlertRule $rule, Opportunity $opportunity): bool
+    /**
+     * Get URL for alert
+     */
+    protected function getAlertUrl(): string
     {
-        $cooldownHours = $rule->cooldown ?? 24;
+        if ($this->alert->opportunity_id) {
+            return route('opportunities.show', $this->alert->opportunity_id);
+        }
 
-        return Alert::where('organization_id', $rule->organization_id)
-            ->where('opportunity_id', $opportunity->id)
-            ->where('alert_rule_id', $rule->id)
-            ->where('created_at', '>=', now()->subHours($cooldownHours))
-            ->exists();
+        if ($this->alert->keyword_id) {
+            return route('keywords.show', $this->alert->keyword_id);
+        }
+
+        return route('dashboard');
     }
 
-    private function buildMessage(Opportunity $opportunity): string
+    /**
+     * Determine overall delivery status
+     */
+    protected function determineOverallStatus(array $deliveryStatus): string
     {
-        $keyword  = $opportunity->keyword?->keyword ?? 'Unknown keyword';
-        $location = $opportunity->location?->city ?? $opportunity->location?->country ?? 'Unknown location';
-        $score    = number_format($opportunity->opportunity_score, 0);
-        $state    = ucfirst(str_replace('_', ' ', $opportunity->trend_state));
+        $allSuccess = true;
+        $anySuccess = false;
 
-        return "🚀 Demand Alert: \"{$keyword}\" in {$location} — Score {$score}/100 ({$state}). " .
-               \App\Services\Opportunities\OpportunityScoringService::label($opportunity->opportunity_score) .
-               " opportunity detected.";
+        foreach ($deliveryStatus as $status) {
+            if ($status['status'] === 'success') {
+                $anySuccess = true;
+            } else {
+                $allSuccess = false;
+            }
+        }
+
+        if ($allSuccess) {
+            return 'sent';
+        } elseif ($anySuccess) {
+            return 'partial';
+        } else {
+            return 'failed';
+        }
     }
 
-    private function resolveRecipient(AlertRule $rule, string $channel): ?string
+    /**
+     * Handle job failure
+     */
+    public function failed(\Throwable $exception): void
     {
-        $recipients = $rule->recipients ?? [];
-        if (empty($recipients)) return null;
+        Log::error('SendAlert job failed', [
+            'alert_id' => $this->alert->id,
+            'error' => $exception->getMessage(),
+        ]);
 
-        return match ($channel) {
-            'sms', 'whatsapp' => collect($recipients)->first(fn ($r) => str_starts_with($r, '+')),
-            'email'           => collect($recipients)->first(fn ($r) => str_contains($r, '@')),
-            default           => null,
-        };
-    }
-
-    private function createDashboardAlert(Opportunity $opportunity, int $orgId): void
-    {
-        Alert::create([
-            'organization_id' => $orgId,
-            'opportunity_id'  => $opportunity->id,
-            'type'            => 'opportunity',
-            'channel'         => 'dashboard',
-            'message'         => $this->buildMessage($opportunity),
-            'payload'         => ['opportunity_score' => $opportunity->opportunity_score],
-            'status'          => 'pending',
+        $this->alert->update([
+            'delivery_status' => 'failed',
+            'delivery_details' => [
+                'error' => $exception->getMessage(),
+                'failed_at' => now()->toDateTimeString(),
+            ],
         ]);
     }
 }

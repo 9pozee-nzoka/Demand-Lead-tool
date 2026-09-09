@@ -35,4 +35,31 @@ return [
         ],
     ],
 
+    'serpapi' => [
+        'key' => env('SERPAPI_KEY'),
+    ],
+
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+        'organization' => env('OPENAI_ORGANIZATION'),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'max_tokens' => env('OPENAI_MAX_TOKENS', 500),
+        'temperature' => env('OPENAI_TEMPERATURE', 0.7),
+    ],
+
+    'africas_talking' => [
+        'api_key' => env('AT_API_KEY'),
+        'username' => env('AT_USERNAME'),
+        'from' => env('AT_FROM', 'DemandLead'),
+        'sandbox' => env('AT_SANDBOX', false),
+    ],
+
+    'whatsapp' => [
+        'api_url' => env('WHATSAPP_API_URL', 'https://graph.facebook.com/v18.0'),
+        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
+        'default_country_code' => env('WHATSAPP_DEFAULT_COUNTRY_CODE', '254'),
+    ],
+
 ];

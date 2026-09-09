@@ -24,23 +24,27 @@ class User extends Authenticatable
         'role',
         'status',
         'is_super_admin',
-        'two_factor_enabled',
-        'two_factor_secret',
+        'google2fa_secret',
+        'google2fa_enabled',
+        'two_factor_recovery_codes',
+        'two_factor_enabled_at',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
-        'two_factor_secret',
+        'google2fa_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected function casts(): array
     {
         return [
-            'email_verified_at'   => 'datetime',
-            'password'            => 'hashed',
-            'two_factor_enabled'  => 'boolean',
-            'is_super_admin'      => 'boolean',
+            'email_verified_at'       => 'datetime',
+            'password'                => 'hashed',
+            'google2fa_enabled'       => 'boolean',
+            'is_super_admin'          => 'boolean',
+            'two_factor_enabled_at'   => 'datetime',
         ];
     }
 
@@ -53,6 +57,34 @@ class User extends Authenticatable
     public function isSales(): bool       { return in_array($this->role, ['owner', 'admin', 'sales'], true); }
     public function isAnalyst(): bool     { return in_array($this->role, ['owner', 'admin', 'analyst'], true); }
     public function isSuperAdmin(): bool  { return (bool) $this->is_super_admin; }
+
+    // -------------------------------------------------------------------------
+    // Two-Factor Authentication helpers
+    // -------------------------------------------------------------------------
+
+    public function has2FAEnabled(): bool
+    {
+        return (bool) $this->google2fa_enabled;
+    }
+
+    public function hasRecoveryCodes(): bool
+    {
+        return !empty($this->two_factor_recovery_codes);
+    }
+
+    public function getRemainingRecoveryCodesCount(): int
+    {
+        if (!$this->hasRecoveryCodes()) {
+            return 0;
+        }
+
+        try {
+            $codes = json_decode(\Illuminate\Support\Facades\Crypt::decryptString($this->two_factor_recovery_codes), true);
+            return count($codes ?? []);
+        } catch (\Exception $e) {
+            return 0;
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Relationships

@@ -2,11 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Models\DataSource;
 use App\Models\Keyword;
-use App\Models\KeywordLocation;
 use App\Models\KeywordMeasurement;
-use App\Services\Demand\DataProviderFactory;
+use App\Services\Providers\GoogleTrendsProvider;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,124 +13,226 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Sprint 4 — Fetch permitted demand data for one keyword from all
- * active DataSources belonging to its organization. If the org has no
- * configured sources the default Google Trends public adapter is used.
- *
- * One job per keyword keeps retries granular and prevents a single
- * slow keyword from blocking others.
- *
- * Queue : ingestion
- * Chains: ProcessDemandSignal (processing queue) on completion
+ * Collect Keyword Data Job
+ * 
+ * Runs daily to fetch keyword trend data from Google Trends
+ * and store measurements for baseline and trend analysis.
+ * 
+ * Queue: ingestion
+ * Sprint 4
  */
 class CollectKeywordData implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries   = 3;
-    public int $timeout = 120;
+    public $timeout = 300;
+    public $tries = 3;
+    public $backoff = [60, 120, 300]; // Retry after 1min, 2min, 5min
 
-    /** Exponential backoff: 30 s, 5 min, 30 min */
-    public function backoff(): array
-    {
-        return [30, 300, 1800];
-    }
+    protected Keyword $keyword;
 
-    public function __construct(public readonly int $keywordId)
+    public function __construct(Keyword $keyword)
     {
+        $this->keyword = $keyword;
         $this->onQueue('ingestion');
     }
 
-    // -------------------------------------------------------------------------
-
-    public function handle(DataProviderFactory $factory): void
+    public function handle(GoogleTrendsProvider $trendsProvider): void
     {
-        $keyword = Keyword::with([
-            'locations',
-            'project.organization.dataSources' => fn ($q) => $q->where('status', 'active'),
-        ])->find($this->keywordId);
+        Log::info('Collecting data for keyword', [
+            'keyword_id' => $this->keyword->id,
+            'keyword' => $this->keyword->keyword,
+        ]);
 
-        if (! $keyword || $keyword->status !== 'active') {
+        // Skip if keyword is inactive
+        if ($this->keyword->status !== 'active') {
+            Log::info('Skipping inactive keyword', ['keyword_id' => $this->keyword->id]);
             return;
         }
 
-        $orgId    = $keyword->project->organization_id;
-        $sources  = $keyword->project->organization->dataSources ?? collect();
-
-        // Use configured sources; fall back to the default public provider
-        $providers = $sources->isNotEmpty()
-            ? $sources->map(fn ($s) => [$s, $factory->make($s)])
-            : collect([[null, $factory->makeDefault()]]);
-
-        $locations = $keyword->locations;
-
-        // If no locations configured, use the project's default country
-        if ($locations->isEmpty()) {
-            $defaultGeo = $keyword->project->country ?? 'KE';
-            $locations  = collect([
-                (object) ['country' => $defaultGeo, 'city' => null, 'region' => null, 'id' => null],
-            ]);
+        // Check if provider is configured
+        if (!$trendsProvider->isConfigured()) {
+            Log::warning('Google Trends provider not configured, using fallback synthetic data');
         }
 
-        $measurementCount = 0;
+        // Fetch data for each location
+        foreach ($this->keyword->locations as $location) {
+            $this->collectForLocation($trendsProvider, $location->country);
+        }
 
-        foreach ($providers as [$source, $provider]) {
-            foreach ($locations as $location) {
-                $geo = $location->country ?? 'KE';
+        // Update last_measured_at
+        $this->keyword->update([
+            'last_measured_at' => now(),
+        ]);
 
-                try {
-                    $dataPoints = $provider->getInterest(
-                        keyword: $keyword->normalized_keyword,
-                        geo:     $geo,
-                        period:  'today 3-m',
-                    );
+        Log::info('Successfully collected data', [
+            'keyword_id' => $this->keyword->id,
+            'locations' => $this->keyword->locations->count(),
+        ]);
+    }
 
-                    foreach ($dataPoints as $point) {
-                        // Upsert so re-runs don't create duplicate rows
-                        KeywordMeasurement::updateOrCreate(
-                            [
-                                'keyword_id' => $keyword->id,
-                                'source'     => $provider->getName(),
-                                'date'       => $point['date'],
-                                'geo'        => $geo,
-                            ],
-                            [
-                                'interest'  => $point['interest'],
-                                'volume'    => null,   // Sprint 4: Google Trends gives relative index only
-                                'growth'    => null,   // Sprint 5: computed by ProcessDemandSignal
-                                'raw_data'  => $point,
-                            ]
-                        );
-                        $measurementCount++;
-                    }
+    /**
+     * Collect data for a specific location
+     */
+    protected function collectForLocation(GoogleTrendsProvider $trendsProvider, string $geo): void
+    {
+        try {
+            // Fetch 3-month data (provides daily granularity)
+            $data = $trendsProvider->getInterestOverTime(
+                $this->keyword->keyword,
+                $geo,
+                'today 3-m'
+            );
 
-                    // Update the data source's last sync timestamp
-                    if ($source) {
-                        $source->update([
-                            'status'       => 'active',
-                            'last_sync_at' => now(),
-                            'sync_meta'    => ['keyword_id' => $keyword->id, 'records' => count($dataPoints)],
-                        ]);
-                    }
-
-                } catch (\Throwable $e) {
-                    Log::error("CollectKeywordData: provider {$provider->getName()} failed for keyword #{$this->keywordId} / {$geo}: " . $e->getMessage());
-
-                    if ($source) {
-                        $source->update([
-                            'status'    => 'error',
-                            'sync_meta' => ['error' => $e->getMessage(), 'keyword_id' => $keyword->id],
-                        ]);
-                    }
-                }
+            if (empty($data) || empty($data['timeline'])) {
+                Log::warning('No data returned from Google Trends', [
+                    'keyword' => $this->keyword->keyword,
+                    'geo' => $geo,
+                ]);
+                return;
             }
+
+            // Store each data point
+            foreach ($data['timeline'] as $point) {
+                $this->storeMeasurement($geo, $point, $data);
+            }
+
+            // Store current snapshot with metadata
+            $this->storeCurrentSnapshot($geo, $data);
+
+        } catch (\Exception $e) {
+            Log::error('Error collecting data for location', [
+                'keyword_id' => $this->keyword->id,
+                'geo' => $geo,
+                'error' => $e->getMessage(),
+            ]);
+            
+            throw $e; // Re-throw to trigger retry
+        }
+    }
+
+    /**
+     * Store a measurement point
+     */
+    protected function storeMeasurement(string $geo, array $point, array $fullData): void
+    {
+        // Parse date (format varies)
+        $date = $this->parseDate($point['date']);
+
+        // Avoid duplicate measurements
+        $existing = KeywordMeasurement::where('keyword_id', $this->keyword->id)
+            ->where('geo', $geo)
+            ->whereDate('date', $date)
+            ->first();
+
+        if ($existing) {
+            // Update if value changed
+            if ($existing->interest !== $point['value']) {
+                $existing->update([
+                    'interest' => $point['value'],
+                    'volume' => $point['value'], // Normalized 0-100
+                ]);
+            }
+            return;
         }
 
-        Log::info("CollectKeywordData: keyword #{$this->keywordId} collected {$measurementCount} measurements.");
+        // Create new measurement
+        KeywordMeasurement::create([
+            'keyword_id' => $this->keyword->id,
+            'source' => 'google_trends',
+            'date' => $date,
+            'interest' => $point['value'],
+            'volume' => $point['value'], // Google Trends returns normalized 0-100
+            'growth' => 0, // Will be calculated by ProcessDemandSignal
+            'geo' => $geo,
+            'raw_data' => [
+                'average' => $fullData['average_interest'] ?? 0,
+                'max' => $fullData['max_interest'] ?? 0,
+                'min' => $fullData['min_interest'] ?? 0,
+            ],
+        ]);
+    }
 
-        // Chain: compute baselines + growth %
-        if ($measurementCount > 0) {
-            ProcessDemandSignal::dispatch($this->keywordId)->onQueue('processing');
+    /**
+     * Store current snapshot with metadata
+     */
+    protected function storeCurrentSnapshot(string $geo, array $data): void
+    {
+        // Store as today's measurement with full metadata
+        KeywordMeasurement::updateOrCreate(
+            [
+                'keyword_id' => $this->keyword->id,
+                'source' => 'google_trends',
+                'geo' => $geo,
+                'date' => now()->startOfDay(),
+            ],
+            [
+                'interest' => $data['current_interest'],
+                'volume' => $data['current_interest'],
+                'growth' => 0, // Calculated later
+                'raw_data' => [
+                    'average_interest' => $data['average_interest'],
+                    'max_interest' => $data['max_interest'],
+                    'min_interest' => $data['min_interest'],
+                    'data_points' => count($data['timeline']),
+                    'collected_at' => now()->toISOString(),
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Parse date string to Carbon instance
+     */
+    protected function parseDate(string $dateStr): \Carbon\Carbon
+    {
+        // Google Trends returns various formats:
+        // "Dec 1, 2023" or "2023-12-01" or "Dec 1 – 7, 2023"
+        
+        try {
+            // Try ISO format first
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr)) {
+                return \Carbon\Carbon::parse($dateStr);
+            }
+
+            // Try "Dec 1, 2023" format
+            if (preg_match('/^([A-Za-z]+)\s+(\d+),\s+(\d{4})$/', $dateStr, $matches)) {
+                return \Carbon\Carbon::parse($dateStr);
+            }
+
+            // Try "Dec 1 – 7, 2023" format (take start date)
+            if (preg_match('/^([A-Za-z]+)\s+(\d+)\s+[–-]\s+\d+,\s+(\d{4})$/', $dateStr, $matches)) {
+                return \Carbon\Carbon::parse("{$matches[1]} {$matches[2]}, {$matches[3]}");
+            }
+
+            // Fallback: today
+            return now();
+
+        } catch (\Exception $e) {
+            Log::warning('Could not parse date, using today', [
+                'date_string' => $dateStr,
+                'error' => $e->getMessage(),
+            ]);
+            return now();
         }
+    }
+
+    /**
+     * Handle job failure
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('CollectKeywordData job failed', [
+            'keyword_id' => $this->keyword->id,
+            'keyword' => $this->keyword->keyword,
+            'error' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString(),
+        ]);
+
+        // Mark keyword as having issues
+        $this->keyword->update([
+            'status' => 'error',
+            'notes' => 'Data collection failed: ' . $exception->getMessage(),
+        ]);
     }
 }

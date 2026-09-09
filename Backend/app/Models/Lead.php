@@ -28,6 +28,14 @@ class Lead extends Model
         'intent',
         'lead_score',
         'score_label',
+        'score_breakdown',
+        'score_explanation',
+        'scored_at',
+        'contact_count',
+        'first_response_at',
+        'budget_range',
+        'company_size',
+        'message',
         'status',
         'assigned_to',
         'qualification_summary',
@@ -40,6 +48,9 @@ class Lead extends Model
     {
         return [
             'lead_score'         => 'decimal:2',
+            'score_breakdown'    => 'array',
+            'scored_at'          => 'datetime',
+            'first_response_at'  => 'datetime',
             'qualification_data' => 'array',
             'qualified_at'       => 'datetime',
             'contacted_at'       => 'datetime',
@@ -68,6 +79,11 @@ class Lead extends Model
     public function campaign(): BelongsTo
     {
         return $this->belongsTo(Campaign::class);
+    }
+
+    public function landingPage(): BelongsTo
+    {
+        return $this->belongsTo(LandingPage::class, 'source', 'slug');
     }
 
     public function assignedUser(): BelongsTo

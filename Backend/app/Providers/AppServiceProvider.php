@@ -14,9 +14,21 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureRateLimiting();
+        $this->registerQueueEventListeners();
     }
 
     // -------------------------------------------------------------------------
+
+    /**
+     * Register queue event listeners
+     */
+    private function registerQueueEventListeners(): void
+    {
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Queue\Events\JobFailed::class,
+            \App\Listeners\NotifyOnJobFailure::class
+        );
+    }
 
     private function configureRateLimiting(): void
     {
@@ -64,6 +76,42 @@ class AppServiceProvider extends ServiceProvider
             return $request->user()
                 ? Limit::perMinute(60)->by($request->user()->id)
                 : Limit::perMinute(20)->by($request->ip());
+        });
+
+        /**
+         * Webhook endpoints — 100 per minute per IP
+         * Higher limit for legitimate webhook traffic
+         */
+        RateLimiter::for('webhooks', function (Request $request) {
+            return Limit::perMinute(100)->by($request->ip());
+        });
+
+        /**
+         * Landing page lead capture — 10 per minute per IP
+         * Prevents spam submissions
+         */
+        RateLimiter::for('lead-capture', function (Request $request) {
+            return Limit::perMinute(10)->by($request->ip());
+        });
+
+        /**
+         * AI content generation — 20 per hour per user
+         * Prevents API quota abuse
+         */
+        RateLimiter::for('ai-generation', function (Request $request) {
+            return $request->user()
+                ? Limit::perHour(20)->by($request->user()->id)
+                : Limit::perHour(5)->by($request->ip());
+        });
+
+        /**
+         * SMS sending — 50 per day per organization
+         * Prevents SMS cost abuse
+         */
+        RateLimiter::for('sms', function (Request $request) {
+            return $request->user()
+                ? Limit::perDay(50)->by('org:' . $request->user()->organization_id)
+                : Limit::perDay(5)->by($request->ip());
         });
     }
 }

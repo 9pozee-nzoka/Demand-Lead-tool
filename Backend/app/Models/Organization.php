@@ -29,6 +29,24 @@ class Organization extends Model
         ];
     }
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($organization) {
+            if (empty($organization->slug)) {
+                $organization->slug = \Illuminate\Support\Str::slug($organization->name);
+                
+                // Ensure unique slug
+                $count = 1;
+                $originalSlug = $organization->slug;
+                while (static::where('slug', $organization->slug)->exists()) {
+                    $organization->slug = $originalSlug . '-' . $count++;
+                }
+            }
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
@@ -56,6 +74,11 @@ class Organization extends Model
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
+    }
+
+    public function opportunities(): HasMany
+    {
+        return $this->hasMany(Opportunity::class);
     }
 
     public function alertRules(): HasMany
