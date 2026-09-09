@@ -1,38 +1,51 @@
 # DemandLead - AI Demand Intelligence Platform
 
-**Status**: ✅ Production-Ready (Sprint 1-12 Complete)  
 **Version**: 1.0.0  
-**Last Updated**: September 4, 2026
+**Status**: 90% MVP Complete
 
 ---
 
 ## What is DemandLead?
 
-An AI-powered demand intelligence platform that detects rising market demand, scores opportunities, generates leads automatically, and manages your sales pipeline.
+An AI-powered SaaS platform that detects rising market demand, scores business opportunities, generates leads automatically, and manages your sales pipeline.
 
-**Core Value**: Detect demand → Generate leads → Close deals
+**Core Flow**: Detect Demand → Score Opportunities → Generate Leads → Convert to Revenue
 
 ---
 
 ## Features
 
-### ✅ Completed (Sprint 1-12)
-- 🤖 **AI-Powered Intelligence**: Automated trend detection with OpenAI insights
-- 📊 **Demand Analytics**: 7/30/90-day baselines, 6-state trend detection
-- 🎯 **Opportunity Scoring**: Explainable 0-100 scores with AI explanations
-- 🔔 **Multi-Channel Alerts**: Email, SMS, in-app notifications
-- 🌐 **Landing Page Generator**: AI-created pages with lead capture
-- 💬 **WhatsApp Integration**: Automated lead capture and qualification
-- 📋 **CRM Pipeline**: Drag-and-drop Kanban board
-- ✅ **Task Management**: Full productivity system
-- 🔒 **Enterprise Security**: Rate limiting, XSS/SQL injection protection
-- 🚀 **Production Ready**: Docker deployment with monitoring
+### ✅ Completed
+- 🔐 **Multi-Tenant Architecture**: Secure organization-level data isolation
+- 🔑 **Authentication & RBAC**: 6 role levels (owner → viewer) with Laravel Sanctum
+- 📊 **Demand Intelligence**: Keyword tracking, trend detection, baseline analytics
+- 🎯 **Opportunity Scoring**: 0-100 explainable scores with 6-factor algorithm
+- 🚀 **Lead Management**: Capture, qualify, score, and route leads
+- 💼 **CRM Pipeline**: Deals, tasks, notes, and pipeline management
+- 📧 **Email Campaigns**: Template builder with audience targeting
+- 🌐 **Landing Pages**: AI-powered page generation with analytics
+- 🔔 **Alert System**: Rule-based notifications (email, SMS ready)
+- 🛡️ **Super Admin Panel**: System-wide monitoring and management
+- 🔒 **Two-Factor Auth**: TOTP-based 2FA for enhanced security
+- 📈 **Analytics Dashboard**: Comprehensive metrics and reporting
+
+### 🔨 In Progress
+- Google Trends API integration (Sprint 4)
+- Demand signal processing (Sprint 5)
+- Opportunity auto-creation (Sprint 6)
+- WhatsApp integration (Sprint 10)
 
 ---
 
 ## Quick Start
 
-### Local Development (5 minutes)
+### Prerequisites
+- PHP 8.3+
+- MySQL/MariaDB
+- Composer
+- Node.js (for asset compilation)
+
+### Installation
 
 ```bash
 cd Backend
@@ -47,53 +60,34 @@ php artisan key:generate
 
 # Setup database
 php artisan migrate
+php artisan db:seed --class=DemoDataSeeder
 
-# Start development
+# Start development server
 php artisan serve
-php artisan queue:work  # In another terminal
 ```
 
-Visit: http://127.0.0.1:8000
+Visit: `http://localhost:8000`
 
-### Production Deployment (10 minutes)
-
-```bash
-cd Backend
-
-# Configure production
-cp .env.example .env.production
-# Edit .env.production with your settings
-
-# Deploy with Docker
-docker-compose up -d --build
-
-# Setup first user
-docker-compose exec app php artisan tinker
+**Demo Credentials:**
 ```
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete guide.
-
----
-
-## Documentation
-
-- **[QUICK_START.md](QUICK_START.md)** - Get running in 10 minutes
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
-- **[SECURITY.md](SECURITY.md)** - Security documentation
-- **[SPRINT_8-12_FINAL_SUMMARY.md](SPRINT_8-12_FINAL_SUMMARY.md)** - Recent features
-- **[FINAL_PROJECT_SUMMARY.md](FINAL_PROJECT_SUMMARY.md)** - Complete overview
+Owner     : owner@demo.com      / password
+Admin     : admin@demo.com      / password
+Sales     : sales@demo.com      / password
+```
 
 ---
 
 ## Technology Stack
 
-- **Backend**: Laravel 11 (PHP 8.3)
-- **Frontend**: Blade Templates + Bootstrap 5
-- **Database**: MySQL/PostgreSQL
-- **Cache/Queue**: Redis
-- **AI**: OpenAI GPT-4o-mini
-- **SMS**: Africa's Talking
-- **Messaging**: WhatsApp Business Platform
+| Layer | Technology |
+|-------|-----------|
+| Backend | Laravel 11 (PHP 8.3) |
+| Frontend | Blade Templates + Tailwind CSS + Alpine.js |
+| Database | MySQL (SQLite for local dev) |
+| Cache/Queue | Redis (database queue for dev) |
+| AI | OpenAI API |
+| SMS | Africa's Talking (configured, not active) |
+| Messaging | WhatsApp Business Platform (planned) |
 
 ---
 
@@ -101,64 +95,72 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete guide.
 
 ```
 ┌─────────────────────────────────────────────┐
-│         Web Interface (Blade)               │
+│    Web Interface (Blade + Tailwind)         │
 ├─────────────────────────────────────────────┤
 │  Controllers → Services → Jobs → Models     │
 ├─────────────────────────────────────────────┤
-│  Redis Queue | Scheduler | Cache            │
+│  Queue Workers | Scheduler | Cache          │
 ├─────────────────────────────────────────────┤
-│  MySQL Database | File Storage              │
+│  MySQL Database | Audit Logs                │
 ├─────────────────────────────────────────────┤
-│  External APIs (OpenAI, SerpApi, SMS, etc.) │
+│  External APIs (Google Trends, OpenAI, SMS) │
 └─────────────────────────────────────────────┘
 ```
+
+**Multi-Tenancy**: Organization-scoped queries with `EnsureSameTenant` middleware
+
+**Queue System**:
+- `ingestion` - Data collection
+- `processing` - Trend analysis
+- `scoring` - Opportunity calculation
+- `notifications` - Alerts
+- `lead_workflows` - Lead qualification
 
 ---
 
 ## Key Commands
 
+### Development
 ```bash
-# Development
+# Start server
 php artisan serve
-php artisan queue:work
+
+# Process queues
+php artisan queue:work --queue=ingestion,processing,scoring
+
+# Run scheduler (for background tasks)
 php artisan schedule:work
+```
 
-# Health checks
+### Data Collection (Sprint 4)
+```bash
+# Collect keyword data
+php artisan keywords:collect --sync --id=1
+
+# Check system health
 php artisan demand:health
+
+# Manual demand collection
 php artisan demand:collect
-php artisan demand:process
-
-# Queue management
-php artisan queue:failed
-php artisan queue:retry all
-
-# Production
-docker-compose up -d
-docker-compose logs -f
-docker-compose exec app php artisan migrate
 ```
 
----
+### Database
+```bash
+# Fresh migration + demo data
+php artisan migrate:fresh --seed
 
-## Configuration
-
-Required environment variables:
-
-```env
-# Core
-APP_URL=https://yourdomain.com
-APP_KEY=base64:...
-DB_DATABASE=demand_lead
-REDIS_HOST=redis
-
-# Optional (features require these)
-SERPAPI_KEY=your_key           # Google Trends data
-OPENAI_API_KEY=your_key        # AI features
-AT_API_KEY=your_key            # SMS alerts
-WHATSAPP_ACCESS_TOKEN=your_key # WhatsApp integration
+# Seed demo data only
+php artisan db:seed --class=DemoDataSeeder
 ```
 
-See `.env.example` for all variables.
+### Administration
+```bash
+# Promote user to super admin
+php artisan admin:promote owner@demo.com
+
+# Demote super admin
+php artisan admin:demote owner@demo.com
+```
 
 ---
 
@@ -167,65 +169,125 @@ See `.env.example` for all variables.
 ```
 Backend/
 ├── app/
-│   ├── Http/Controllers/     # 10 controllers
-│   ├── Models/               # 35+ models
-│   ├── Services/             # 9 service classes
-│   ├── Jobs/                 # 5 queue jobs
-│   └── Helpers/              # Utility helpers
-├── resources/views/          # 30+ Blade templates
+│   ├── Http/
+│   │   ├── Controllers/Api/      # REST API endpoints
+│   │   ├── Controllers/Web/      # Blade view controllers
+│   │   ├── Middleware/           # Multi-tenancy, RBAC
+│   │   └── Requests/             # Form validation
+│   ├── Models/                   # Eloquent models (35+)
+│   ├── Services/                 # Business logic
+│   │   ├── Demand/              # Trend detection, baselines
+│   │   ├── Intelligence/        # AI enrichment
+│   │   ├── Opportunities/       # Scoring engine
+│   │   ├── Leads/               # Lead management
+│   │   ├── Alerts/              # Rule evaluation
+│   │   └── Providers/           # Google Trends, etc.
+│   ├── Jobs/                     # Queue jobs
+│   └── Helpers/                  # Utilities
+├── resources/views/              # Blade templates (40+)
 ├── routes/
-│   ├── web.php              # Web routes
-│   └── console.php          # Scheduled tasks
-├── docker/                   # Deployment configs
-└── database/migrations/      # 20+ migrations
+│   ├── web.php                  # Web routes
+│   ├── api.php                  # REST API
+│   └── console.php              # Scheduled tasks
+└── database/
+    ├── migrations/              # Schema (20+ tables)
+    └── seeders/                 # Demo data
 ```
 
 ---
 
-## Roadmap
+## Database Schema
 
-### Sprint 13-15 (Next 30 days)
-- [ ] 2FA authentication
-- [ ] Advanced analytics dashboard
-- [ ] Email campaign builder
-- [ ] API rate limiting UI
-- [ ] Webhook event logger
+**Core Tables** (20+):
+- `organizations`, `users`, `subscriptions`, `plans`
+- `projects`, `keywords`, `keyword_locations`, `keyword_measurements`
+- `demand_clusters`, `opportunities`
+- `leads`, `lead_events`, `contacts`
+- `deals`, `tasks`, `notes`
+- `landing_pages`, `email_campaigns`, `campaign_recipients`
+- `alerts`, `alert_rules`, `audit_logs`
 
-### Sprint 16-18 (Next 90 days)
-- [ ] Mobile app (React Native)
-- [ ] Additional data sources (Twitter, Reddit)
-- [ ] Predictive analytics
-- [ ] White-label option
-- [ ] API marketplace
-
-### Future
-- [ ] Machine learning models
-- [ ] Automated campaign management
-- [ ] Partner integrations
-- [ ] Multi-language support
+See `.kiro/steering/architecture.md` for complete schema documentation.
 
 ---
 
-## Performance
+## Configuration
 
-- **Response Time**: <200ms (95th percentile)
-- **Throughput**: 100+ requests/second
-- **Queue Processing**: 1000+ jobs/minute
-- **Database Queries**: <50ms average
+### Required Environment Variables
+```env
+APP_KEY=base64:...                    # Generated by artisan key:generate
+DB_DATABASE=demand_lead
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+### Optional (Feature Flags)
+```env
+# Google Trends (Sprint 4)
+SERPAPI_KEY=your_key                  # Or leave empty for synthetic data
+
+# AI Features (Sprint 5+)
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=gpt-4o-mini
+
+# SMS Alerts (Sprint 9)
+AT_API_KEY=your_key
+AT_USERNAME=your_username
+
+# WhatsApp (Sprint 10)
+WHATSAPP_ACCESS_TOKEN=your_token
+WHATSAPP_PHONE_NUMBER_ID=your_id
+```
 
 ---
 
 ## Security
 
-- ✅ Multi-tenant data isolation
-- ✅ Role-based access control (6 roles)
-- ✅ Rate limiting (10 zones)
-- ✅ CSRF/XSS/SQL injection protection
-- ✅ Security headers (HSTS, CSP, etc.)
-- ✅ Encrypted credentials storage
-- ✅ Audit logging
+- ✅ Multi-tenant data isolation with `organization_id` scoping
+- ✅ Role-based access control (6 roles: owner, admin, analyst, marketing, sales, viewer)
+- ✅ Laravel Sanctum token authentication
+- ✅ CSRF protection on all forms
+- ✅ SQL injection prevention (parameterized queries)
+- ✅ XSS protection (Blade escaping)
+- ✅ Rate limiting (configured, needs Redis for production)
+- ✅ Audit logging for all critical actions
+- ✅ Encrypted credential storage
+- ✅ Two-factor authentication (TOTP)
 
-See [SECURITY.md](SECURITY.md) for details.
+---
+
+## Current Sprint Status
+
+**Sprint 1-2**: ✅ Complete (Auth, multi-tenancy)  
+**Sprint 3**: ✅ Complete (Projects, keywords, locations)  
+**Sprint 4**: 🔨 In Progress (Google Trends integration)  
+**Sprint 5-12**: 🔲 Planned (Signal processing, opportunities, alerts, CRM)
+
+---
+
+## Roadmap
+
+### Next 30 Days
+- [ ] Complete Sprint 4: Google Trends data collection
+- [ ] Sprint 5: Process demand signals (baselines, trend states)
+- [ ] Sprint 6: Opportunity scoring automation
+- [ ] Sprint 7: Alert rules and notifications
+- [ ] Sprint 8: AI explanations and insights
+
+### Next 90 Days
+- [ ] Sprint 9: SMS alerts via Africa's Talking
+- [ ] Sprint 10: WhatsApp lead capture
+- [ ] Sprint 11: Basic CRM enhancements
+- [ ] Sprint 12: Production deployment (Docker + Nginx)
+
+---
+
+## Performance
+
+- Response Time: <500ms (development)
+- Database Queries: Optimized with eager loading
+- Queue Processing: Async job handling
+- Caching: Ready for Redis in production
 
 ---
 
@@ -237,15 +299,10 @@ Proprietary - All rights reserved
 
 ## Support
 
-- **Email**: support@demandlead.io
-- **Documentation**: https://docs.demandlead.io
-- **Issues**: GitHub Issues
+For issues or questions, check:
+- Architecture documentation: `.kiro/steering/architecture.md`
+- Backend README: `Backend/README.md`
 
 ---
 
-## Credits
-
-Built with Laravel 11, OpenAI, and modern PHP best practices.
-
-**Version**: 1.0.0-production  
-**Status**: Production-Ready ✅
+**Built with Laravel 11, Tailwind CSS, and modern PHP best practices.**
