@@ -34,6 +34,13 @@ composer install \
   --prefer-dist \
   --optimize-autoloader
 
+# ── Frontend assets (Tailwind CSS) ────────────────────────────────────────────
+echo "▶  Installing npm dependencies…"
+npm ci --prefix "${APP_DIR}" --silent
+
+echo "▶  Building Vite assets (Tailwind CSS)…"
+npm run build --prefix "${APP_DIR}"
+
 # ── Maintenance mode ──────────────────────────────────────────────────────────
 echo "▶  Enabling maintenance mode…"
 ${ARTISAN} down --retry=10

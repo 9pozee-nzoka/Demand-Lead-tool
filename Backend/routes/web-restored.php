@@ -19,11 +19,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     if (auth()->check()) {
-        // Super admins go to admin dashboard
-        if (auth()->user()->is_super_admin) {
-            return redirect()->route('admin.dashboard');
-        }
-        // Regular users go to tenant dashboard
         return redirect()->route('dashboard');
     }
     return view('welcome');
@@ -212,17 +207,3 @@ Route::middleware('auth')->prefix('analytics')->name('analytics.')->group(functi
     Route::get('/export-csv', [\App\Http\Controllers\Web\AnalyticsController::class, 'exportCsv'])->name('export-csv');
     Route::get('/export-detailed', [\App\Http\Controllers\Web\AnalyticsController::class, 'exportDetailedCsv'])->name('export-detailed');
 });
-
-// ── Super Admin Panel ─────────────────────────────────────────────────────────
-Route::prefix('super-admin')
-    ->middleware(['auth', App\Http\Middleware\EnsureSuperAdmin::class])
-    ->name('admin.')
-    ->group(function () {
-        Route::get('/dashboard', [\App\Http\Controllers\Web\AdminDashboardController::class, 'index'])->name('dashboard');
-        Route::get('/organizations', [\App\Http\Controllers\Web\AdminDashboardController::class, 'organizations'])->name('organizations');
-        Route::get('/organizations/{organization}', [\App\Http\Controllers\Web\AdminDashboardController::class, 'organizationDetail'])->name('organizations.show');
-        Route::get('/users', [\App\Http\Controllers\Web\AdminDashboardController::class, 'users'])->name('users');
-        Route::get('/audit-log', [\App\Http\Controllers\Web\AdminDashboardController::class, 'auditLog'])->name('audit-log');
-        Route::get('/settings', [\App\Http\Controllers\Web\AdminDashboardController::class, 'settings'])->name('settings');
-    });
-
