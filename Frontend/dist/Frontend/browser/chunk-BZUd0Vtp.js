@@ -1,1 +1,0 @@
-import{rn as iv}from"./chunk-Dajy4FE6.js";var t=class n{transform(i,r=`KSh`){return i==null?`—`:`${r} ${i.toLocaleString(`en-KE`,{minimumFractionDigits:0,maximumFractionDigits:0})}`}static ɵfac=function(r){return new(r||n)};static ɵpipe=iv({name:`currencyKe`,type:n,pure:!0})};export{t};
