@@ -19,6 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Sanctum stateful domains for SPA support
         $middleware->statefulApi();
 
+        // Global web middleware
+        $middleware->web(append: [
+            \App\Http\Middleware\ShareImpersonationData::class,
+        ]);
+
         // Custom middleware aliases
         $middleware->alias([
             'tenant'       => \App\Http\Middleware\EnsureSameTenant::class,

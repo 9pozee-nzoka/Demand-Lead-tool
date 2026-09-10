@@ -137,9 +137,36 @@ class AdminDashboardController extends Controller
      */
     public function users(): View
     {
-        $users = User::with(['organization:id,name'])
-            ->orderByDesc('created_at')
-            ->paginate(50);
+        $query = User::with(['organization:id,name']);
+
+        // Search filter
+        if (request()->filled('search')) {
+            $search = request('search');
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhereHas('organization', fn($org) => $org->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        // Role filter
+        if (request()->filled('role')) {
+            $query->where('role', request('role'));
+        }
+
+        // Status filter
+        if (request()->filled('status')) {
+            $query->where('status', request('status'));
+        }
+
+        // Admin type filter
+        if (request('admin_type') === 'super_admin') {
+            $query->where('is_super_admin', true);
+        } elseif (request('admin_type') === 'org_admin') {
+            $query->whereIn('role', ['owner', 'admin'])->where('is_super_admin', false);
+        }
+
+        $users = $query->orderByDesc('created_at')->paginate(50);
 
         return view('admin.users', compact('users'));
     }
@@ -149,9 +176,33 @@ class AdminDashboardController extends Controller
      */
     public function auditLog(): View
     {
-        $logs = AuditLog::with(['user:id,name,email', 'organization:id,name'])
-            ->latest()
-            ->paginate(100);
+        $query = AuditLog::with(['user:id,name,email', 'organization:id,name']);
+
+        // Search filter
+        if (request()->filled('search')) {
+            $search = request('search');
+            $query->where(function($q) use ($search) {
+                $q->where('action', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                  ->orWhereHas('organization', fn($o) => $o->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        // Action type filter
+        if (request()->filled('action_type')) {
+            $query->where('action', 'like', request('action_type') . '.%');
+        }
+
+        // Date range filter
+        if (request()->filled('date_from')) {
+            $query->whereDate('created_at', '>=', request('date_from'));
+        }
+        if (request()->filled('date_to')) {
+            $query->whereDate('created_at', '<=', request('date_to'));
+        }
+
+        $logs = $query->latest()->paginate(100);
 
         return view('admin.audit-log', compact('logs'));
     }

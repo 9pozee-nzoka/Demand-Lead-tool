@@ -99,18 +99,58 @@
         </div>
     </div>
 
-    <!-- Trend Chart Placeholder -->
+    <!-- Trend Chart -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Trend Analysis</h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">📈 Trend Analysis</h2>
+            <div class="inline-flex rounded-lg bg-gray-100 p-1">
+                <button onclick="updateChart(7)" 
+                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" 
+                        data-period="7">
+                    7D
+                </button>
+                <button onclick="updateChart(30)" 
+                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" 
+                        data-period="30">
+                    30D
+                </button>
+                <button onclick="updateChart(90)" 
+                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn active" 
+                        data-period="90">
+                    90D
+                </button>
+            </div>
+        </div>
+        
+        @if($measurements->count() > 0)
+        <div style="height: 350px;">
+            <canvas id="trendChart"></canvas>
+        </div>
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-blue-50 rounded-lg p-4">
+                <p class="text-xs text-blue-600 font-medium mb-1">7-Day Average</p>
+                <p class="text-2xl font-bold text-blue-700">{{ number_format($stats['avg_7d']) }}</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4">
+                <p class="text-xs text-green-600 font-medium mb-1">30-Day Average</p>
+                <p class="text-2xl font-bold text-green-700">{{ number_format($stats['avg_30d']) }}</p>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-4">
+                <p class="text-xs text-purple-600 font-medium mb-1">Peak Interest</p>
+                <p class="text-2xl font-bold text-purple-700">{{ number_format($stats['peak']) }}</p>
+            </div>
+        </div>
+        @else
         <div class="h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
             <div class="text-center">
                 <svg class="h-12 w-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                <p class="text-gray-600">Trend chart will be displayed here</p>
-                <p class="text-sm text-gray-500 mt-1">Historical data visualization coming soon</p>
+                <p class="text-gray-600">No historical data available yet</p>
+                <p class="text-sm text-gray-500 mt-1">Data collection will begin shortly</p>
             </div>
         </div>
+        @endif
     </div>
 
     <!-- Target Locations -->
@@ -131,4 +171,142 @@
         </div>
     </div>
 </div>
+
+@if($measurements->count() > 0)
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// Prepare data from backend
+const allData = @json($chartData);
+let currentChart = null;
+
+// Initialize with 90 days
+document.addEventListener('DOMContentLoaded', function() {
+    updateChart(90);
+});
+
+function updateChart(days) {
+    // Update active button
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        if (btn.dataset.period == days) {
+            btn.classList.add('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+            btn.classList.remove('text-gray-600');
+        } else {
+            btn.classList.remove('active', 'bg-white', 'text-gray-900', 'shadow-sm');
+            btn.classList.add('text-gray-600');
+        }
+    });
+
+    // Filter data
+    const filteredData = allData.slice(-days);
+    
+    // Prepare chart data
+    const chartData = {
+        labels: filteredData.map(d => d.date),
+        datasets: [
+            {
+                label: 'Interest Over Time',
+                data: filteredData.map(d => d.interest),
+                borderColor: 'rgb(59, 130, 246)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y',
+            },
+            {
+                label: 'Search Volume',
+                data: filteredData.map(d => d.volume),
+                borderColor: 'rgb(147, 51, 234)',
+                backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y1',
+            }
+        ]
+    };
+
+    // Destroy existing chart
+    if (currentChart) {
+        currentChart.destroy();
+    }
+
+    // Create new chart
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    currentChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Interest (0-100)',
+                        font: {
+                            weight: 'bold'
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Search Volume',
+                        font: {
+                            weight: 'bold'
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                },
+                x: {
+                    grid: {
+                        display: false,
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+@endif
 @endsection

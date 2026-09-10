@@ -131,11 +131,36 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/conversation/{lead}/send', [WhatsAppController::class, 'sendMessage'])->name('send-message');
     });
 
-    // Team
-    Route::get('/team', function() { return view('team.index'); })->name('team.index');
+    // Team Management
+    Route::get('/team', [\App\Http\Controllers\Web\TeamController::class, 'index'])->name('team.index');
+    Route::post('/team/invite', [\App\Http\Controllers\Web\TeamController::class, 'invite'])->name('team.invite')->middleware('role:admin,owner');
+    Route::patch('/team/{user}/status', [\App\Http\Controllers\Web\TeamController::class, 'updateStatus'])->name('team.update-status')->middleware('role:admin,owner');
+    Route::delete('/team/{user}', [\App\Http\Controllers\Web\TeamController::class, 'destroy'])->name('team.destroy')->middleware('role:admin,owner');
 
-    // Billing
-    Route::get('/billing', function() { return view('billing.index'); })->name('billing.index');
+    // Reports & Analytics
+    Route::get('/reports', [\App\Http\Controllers\Web\ReportsController::class, 'index'])->name('reports.index');
+
+    // Billing & Subscription
+    Route::get('/billing', [\App\Http\Controllers\Web\BillingController::class, 'index'])->name('billing.index');
+    Route::post('/billing/change-plan', [\App\Http\Controllers\Web\BillingController::class, 'changePlan'])->name('billing.change-plan')->middleware('role:owner,admin');
+    Route::post('/billing/cancel', [\App\Http\Controllers\Web\BillingController::class, 'cancelSubscription'])->name('billing.cancel')->middleware('role:owner');
+
+    // Data Sources Management
+    Route::prefix('sources')->name('sources.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Web\SourcesController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Web\SourcesController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Web\SourcesController::class, 'store'])->name('store');
+        Route::get('/{source}', [\App\Http\Controllers\Web\SourcesController::class, 'show'])->name('show');
+        Route::get('/{source}/edit', [\App\Http\Controllers\Web\SourcesController::class, 'edit'])->name('edit');
+        Route::patch('/{source}', [\App\Http\Controllers\Web\SourcesController::class, 'update'])->name('update');
+        Route::delete('/{source}', [\App\Http\Controllers\Web\SourcesController::class, 'destroy'])->name('destroy');
+        Route::post('/{source}/test', [\App\Http\Controllers\Web\SourcesController::class, 'test'])->name('test');
+        Route::post('/{source}/run', [\App\Http\Controllers\Web\SourcesController::class, 'run'])->name('run');
+        Route::post('/{source}/pause', [\App\Http\Controllers\Web\SourcesController::class, 'pause'])->name('pause');
+        Route::post('/{source}/activate', [\App\Http\Controllers\Web\SourcesController::class, 'activate'])->name('activate');
+        Route::get('/{source}/items', [\App\Http\Controllers\Web\SourcesController::class, 'items'])->name('items');
+        Route::get('/{source}/events', [\App\Http\Controllers\Web\SourcesController::class, 'events'])->name('events');
+    });
 
     // Profile
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -224,5 +249,13 @@ Route::prefix('super-admin')
         Route::get('/users', [\App\Http\Controllers\Web\AdminDashboardController::class, 'users'])->name('users');
         Route::get('/audit-log', [\App\Http\Controllers\Web\AdminDashboardController::class, 'auditLog'])->name('audit-log');
         Route::get('/settings', [\App\Http\Controllers\Web\AdminDashboardController::class, 'settings'])->name('settings');
+        
+        // User Impersonation
+        Route::post('/impersonate/{user}', [\App\Http\Controllers\Admin\ImpersonateController::class, 'start'])->name('impersonate');
     });
+
+// Stop Impersonation (available when impersonating)
+Route::post('/stop-impersonating', [\App\Http\Controllers\Admin\ImpersonateController::class, 'stop'])
+    ->middleware('auth')
+    ->name('impersonate.stop');
 

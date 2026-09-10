@@ -13,6 +13,9 @@
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        
+        <!-- Sources Dashboard Styles -->
+        <link rel="stylesheet" href="{{ asset('css/sources.css') }}">
 
         <style>
             body { 
@@ -21,6 +24,9 @@
         </style>
     </head>
     <body class="h-full bg-gray-50 antialiased">
+        <!-- Impersonation Banner -->
+        <x-impersonation-banner />
+        
         <div class="h-full">
             @include('layouts.navigation')
 
@@ -69,5 +75,7 @@
                 </main>
             </div>
         </div>
+        
+        @stack('scripts')
     </body>
 </html>

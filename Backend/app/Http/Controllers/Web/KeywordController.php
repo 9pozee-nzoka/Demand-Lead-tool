@@ -82,11 +82,31 @@ class KeywordController extends Controller
     {
         $this->authorize('view', $keyword);
 
-        $keyword->load(['project', 'locations', 'measurements' => function($q) {
-            $q->orderBy('measured_at', 'desc')->limit(30);
-        }]);
+        $keyword->load(['project', 'locations', 'latestMeasurement']);
 
-        return view('keywords.show', compact('keyword'));
+        // Get measurements for charting (last 90 days)
+        $measurements = $keyword->measurements()
+            ->where('measured_at', '>=', now()->subDays(90))
+            ->orderBy('measured_at', 'asc')
+            ->get();
+
+        // Prepare chart data
+        $chartData = $measurements->map(function($m) {
+            return [
+                'date' => $m->measured_at->format('M d'),
+                'interest' => $m->interest ?? 0,
+                'volume' => $m->search_volume ?? 0,
+            ];
+        });
+
+        // Calculate stats
+        $stats = [
+            'avg_7d' => $measurements->where('measured_at', '>=', now()->subDays(7))->avg('interest') ?? 0,
+            'avg_30d' => $measurements->where('measured_at', '>=', now()->subDays(30))->avg('interest') ?? 0,
+            'peak' => $measurements->max('interest') ?? 0,
+        ];
+
+        return view('keywords.show', compact('keyword', 'measurements', 'chartData', 'stats'));
     }
 
     public function destroy(Keyword $keyword)

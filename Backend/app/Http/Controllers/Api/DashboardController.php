@@ -8,7 +8,10 @@ use App\Models\Keyword;
 use App\Models\KeywordMeasurement;
 use App\Models\Lead;
 use App\Models\Opportunity;
+use App\Models\ScrapedItem;
+use App\Models\SourceScraper;
 use App\Models\UsageRecord;
+use App\Services\Analytics\SourceAnalytics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,6 +24,7 @@ class DashboardController extends Controller
     public function index(Request $request): JsonResponse
     {
         $orgId = $request->user()->organization_id;
+        $organization = $request->user()->organization;
         $since = now()->startOfMonth();
 
         // Core stats
@@ -66,6 +70,44 @@ class DashboardController extends Controller
                 'date'       => $m->date,
             ]);
 
+        // Source Intelligence Metrics (NEW)
+        $sources = SourceScraper::where('organization_id', $orgId)->get();
+        $scrapedItems = ScrapedItem::where('organization_id', $orgId)
+            ->where('created_at', '>=', $since)
+            ->get();
+
+        $sourceMetrics = [
+            'total_sources' => $sources->count(),
+            'active_sources' => $sources->where('status', 'active')->count(),
+            'items_this_month' => $scrapedItems->count(),
+            'opportunities_found' => $scrapedItems->where('opportunity_score', '>=', 50)->count(),
+            'leads_converted' => $scrapedItems->whereNotNull('lead_id')->count(),
+            'conversion_rate' => $scrapedItems->count() > 0 
+                ? round(($scrapedItems->whereNotNull('lead_id')->count() / $scrapedItems->count()) * 100, 1)
+                : 0,
+        ];
+
+        // Top 5 Source Opportunities
+        $topSourceOpportunities = ScrapedItem::where('organization_id', $orgId)
+            ->where('opportunity_score', '>=', 50)
+            ->whereNull('lead_id')
+            ->orderByDesc('opportunity_score')
+            ->orderByDesc('created_at')
+            ->limit(5)
+            ->get()
+            ->map(fn ($item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'intent' => $item->intent,
+                'opportunity_score' => $item->opportunity_score,
+                'lead_score' => $item->lead_score,
+                'source_type' => $item->sourceScraper?->type,
+                'created_at' => $item->created_at,
+            ]);
+
+        // Source breakdown by type
+        $sourcesByType = $sources->groupBy('type')->map(fn ($items) => $items->count());
+
         return response()->json([
             'opportunities' => [
                 'total'      => $opportunities->count(),
@@ -82,7 +124,10 @@ class DashboardController extends Controller
                 'won'     => $deals->clone()->won()->count(),
                 'revenue' => (float) $deals->clone()->won()->where('won_at', '>=', $since)->sum('value'),
             ],
+            'sources' => $sourceMetrics,
+            'sources_by_type' => $sourcesByType,
             'top_opportunities' => $topOpportunities,
+            'top_source_opportunities' => $topSourceOpportunities,
             'trending_keywords' => $trendingKeywords,
         ]);
     }
@@ -114,6 +159,7 @@ class DashboardController extends Controller
     public function roi(Request $request): JsonResponse
     {
         $orgId  = $request->user()->organization_id;
+        $organization = $request->user()->organization;
         $period = now()->format('Y-m');
 
         $revenue = Deal::where('organization_id', $orgId)
@@ -127,12 +173,30 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('metric');
 
+        // Source Intelligence ROI (NEW)
+        $sourceAnalytics = app(\App\Services\Analytics\SourceAnalytics::class);
+        $sourcePerformance = $sourceAnalytics->getSourcePerformance($organization, 30);
+        
+        $sourceSummary = $sourcePerformance['summary'] ?? [
+            'total_revenue' => 0,
+            'total_cost' => 0,
+            'total_leads' => 0,
+            'overall_roi' => 0,
+        ];
+
         return response()->json([
             'period'          => $period,
             'revenue'         => (float) $revenue,
             'leads_generated' => $usageRecord->get('leads')?->quantity ?? 0,
             'ai_requests'     => $usageRecord->get('ai_requests')?->quantity ?? 0,
             'alerts_sent'     => $usageRecord->get('alerts')?->quantity ?? 0,
+            'source_intelligence' => [
+                'revenue' => $sourceSummary['total_revenue'],
+                'cost' => $sourceSummary['total_cost'],
+                'profit' => $sourceSummary['total_revenue'] - $sourceSummary['total_cost'],
+                'leads' => $sourceSummary['total_leads'],
+                'roi_percentage' => $sourceSummary['overall_roi'],
+            ],
         ]);
     }
 }

@@ -53,6 +53,14 @@ Route::prefix('v1')->group(function () {
     Route::post('capture/{slug}', [LandingPageController::class, 'capture'])->name('capture');
 
     // -----------------------------------------------------------------------
+    // Public — Webhook Receiver (no auth, token-based validation)
+    // -----------------------------------------------------------------------
+    Route::prefix('webhooks')->name('webhooks.')->group(function () {
+        Route::post('/receive/{source}/{token}', [\App\Http\Controllers\Api\WebhookController::class, 'receive'])->name('receive');
+        Route::get('/test/{source}', [\App\Http\Controllers\Api\WebhookController::class, 'test'])->name('test');
+    });
+
+    // -----------------------------------------------------------------------
     // Authenticated
     // -----------------------------------------------------------------------
     Route::middleware(['auth:sanctum', 'tenant', 'throttle:api'])->group(function () {
@@ -196,6 +204,12 @@ Route::prefix('v1')->group(function () {
             Route::post('cluster',        [IntelligenceController::class, 'recluster'])->name('recluster');
             Route::post('classify-intents',[IntelligenceController::class, 'classifyIntents'])->name('classify-intents');
             Route::get('competitors',     [IntelligenceController::class, 'competitors'])->name('competitors');
+            
+            // Source opportunities with explainability
+            Route::get('source-opportunities',           [\App\Http\Controllers\Api\OpportunityController::class, 'index'])->name('source-opportunities');
+            Route::get('source-opportunities/stats',     [\App\Http\Controllers\Api\OpportunityController::class, 'statistics'])->name('source-opportunities.stats');
+            Route::get('source-opportunities/{id}',      [\App\Http\Controllers\Api\OpportunityController::class, 'show'])->name('source-opportunities.show');
+            Route::post('source-opportunities/{id}/reanalyze', [\App\Http\Controllers\Api\OpportunityController::class, 'reanalyze'])->name('source-opportunities.reanalyze');
         });
 
         // Reports
@@ -209,14 +223,28 @@ Route::prefix('v1')->group(function () {
             Route::get('export/keywords.csv',[ReportController::class, 'exportKeywords'])->name('export.keywords');
         });
 
-        // Integrations — DataSource CRUD + connection testing
-        Route::prefix('integrations')->name('integrations.')->group(function () {
-            Route::get('/',                          [IntegrationController::class, 'index'])->name('index');
-            Route::post('/',                         [IntegrationController::class, 'store'])->name('store');
-            Route::patch('/{dataSource}',            [IntegrationController::class, 'update'])->name('update');
-            Route::delete('/{dataSource}',           [IntegrationController::class, 'destroy'])->name('destroy');
-            Route::post('/{dataSource}/test',        [IntegrationController::class, 'test'])->name('test');
-            Route::get('/{dataSource}/stats',        [IntegrationController::class, 'stats'])->name('stats');
+        // Source Management - Data Sources CRUD + Operations
+        Route::prefix('sources')->name('sources.')->group(function () {
+            Route::get('/',                          [\App\Http\Controllers\Api\SourceController::class, 'index'])->name('index');
+            Route::get('/templates',                 [\App\Http\Controllers\Api\SourceController::class, 'templates'])->name('templates');
+            Route::post('/',                         [\App\Http\Controllers\Api\SourceController::class, 'store'])->name('store');
+            Route::get('/{source}',                  [\App\Http\Controllers\Api\SourceController::class, 'show'])->name('show');
+            Route::patch('/{source}',                [\App\Http\Controllers\Api\SourceController::class, 'update'])->name('update');
+            Route::delete('/{source}',               [\App\Http\Controllers\Api\SourceController::class, 'destroy'])->name('destroy');
+            Route::post('/{source}/test',            [\App\Http\Controllers\Api\SourceController::class, 'test'])->name('test');
+            Route::post('/{source}/run',             [\App\Http\Controllers\Api\SourceController::class, 'run'])->name('run');
+            Route::post('/{source}/pause',           [\App\Http\Controllers\Api\SourceController::class, 'pause'])->name('pause');
+            Route::post('/{source}/activate',        [\App\Http\Controllers\Api\SourceController::class, 'activate'])->name('activate');
+            Route::get('/{source}/items',            [\App\Http\Controllers\Api\SourceController::class, 'items'])->name('items');
+        });
+
+        // Source Analytics — Performance tracking and ROI
+        Route::prefix('source-analytics')->name('source-analytics.')->group(function () {
+            Route::get('/',                          [\App\Http\Controllers\Api\SourceAnalyticsController::class, 'index'])->name('index');
+            Route::get('/compare-types',             [\App\Http\Controllers\Api\SourceAnalyticsController::class, 'compareTypes'])->name('compare-types');
+            Route::get('/insights',                  [\App\Http\Controllers\Api\SourceAnalyticsController::class, 'insights'])->name('insights');
+            Route::get('/recommendations',           [\App\Http\Controllers\Api\SourceAnalyticsController::class, 'recommendations'])->name('recommendations');
+            Route::get('/{source}',                  [\App\Http\Controllers\Api\SourceAnalyticsController::class, 'show'])->name('show');
         });
 
         // Billing & Usage — Sprint 16
