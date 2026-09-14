@@ -147,7 +147,7 @@
                                 <div class="flex items-start justify-between">
                                     <div class="flex-1">
                                         <div class="flex items-center space-x-2 mb-2">
-                                            <h4 class="font-semibold text-gray-900">{{ $opportunity->name ?? $opportunity->keyword->term ?? 'Opportunity' }}</h4>
+                                            <h4 class="font-semibold text-gray-900">{{ $opportunity->title ?? $opportunity->keyword->keyword ?? 'Opportunity' }}</h4>
                                             @php
                                                 $priorityClass = match($opportunity->priority) {
                                                     'very_high' => 'bg-red-100 text-red-800',

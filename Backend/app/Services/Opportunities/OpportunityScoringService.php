@@ -30,17 +30,18 @@ class OpportunityScoringService
     public function calculateScore(Opportunity $opportunity): array
     {
         $keyword = $opportunity->keyword;
-        $latestMeasurement = $keyword?->latestMeasurement;
+        // latestMeasurement is a HasMany — get the first record
+        $latestMeasurement = $keyword?->getLatestMeasurementRecord();
 
         if (!$latestMeasurement) {
             return $this->defaultScores();
         }
 
         // Calculate individual component scores
-        $growthScore = $this->calculateGrowthScore($latestMeasurement->growth_rate ?? 0);
-        $intentScore = $this->calculateIntentScore($keyword->intent ?? 'informational');
-        $geoScore = $this->calculateGeoScore($opportunity, $keyword);
-        $volumeScore = $this->calculateVolumeScore($latestMeasurement->search_volume ?? 0);
+        $growthScore     = $this->calculateGrowthScore($latestMeasurement->growth ?? 0);
+        $intentScore     = $this->calculateIntentScore($keyword->intent ?? 'informational');
+        $geoScore        = $this->calculateGeoScore($opportunity, $keyword);
+        $volumeScore     = $this->calculateVolumeScore($latestMeasurement->volume ?? 0);
         $competitionScore = $this->calculateCompetitionScore($latestMeasurement->competition ?? 0);
         $historicalScore = $this->calculateHistoricalScore($keyword);
 
@@ -285,19 +286,27 @@ class OpportunityScoringService
     public function updateOpportunityScores(Opportunity $opportunity): Opportunity
     {
         $scores = $this->calculateScore($opportunity);
-        $opportunity->update($scores);
+        $opportunity->update([
+            'opportunity_score' => $scores['opportunity_score'],
+            'growth_score'      => $scores['growth_score'],
+            'intent_score'      => $scores['intent_score'],
+            'geo_score'         => $scores['geo_score'],
+            'volume_score'      => $scores['volume_score'],
+            'competition_score' => $scores['competition_score'],
+            'historical_score'  => $scores['historical_score'],
+        ]);
         return $opportunity->fresh();
     }
 
     /**
      * Batch recalculate scores for multiple opportunities
      */
-    public function recalculateScores(string $status = 'open'): int
+    public function recalculateScores(string $status = 'detected'): int
     {
         $count = 0;
 
         Opportunity::where('status', $status)
-            ->with(['keyword.latestMeasurement', 'keyword.locations', 'project'])
+            ->with(['keyword.measurements', 'keyword.locations', 'project'])
             ->chunkById(100, function ($opportunities) use (&$count) {
                 foreach ($opportunities as $opportunity) {
                     $this->updateOpportunityScores($opportunity);

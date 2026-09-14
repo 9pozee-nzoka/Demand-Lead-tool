@@ -55,7 +55,7 @@ class CollectKeywordDataCommand extends Command
 
         foreach ($keywords as $keyword) {
             $this->newLine();
-            $this->line("Processing: {$keyword->term} (ID: {$keyword->id})");
+            $this->line("Processing: {$keyword->keyword} (ID: {$keyword->id})");
 
             if ($this->option('sync')) {
                 // Run synchronously for immediate feedback
@@ -63,7 +63,7 @@ class CollectKeywordDataCommand extends Command
                     $job = new CollectKeywordData($keyword);
                     $provider = app(\App\Services\Providers\GoogleTrendsProvider::class);
                     $job->handle($provider);
-                    $this->info("  ✓ Collected data for '{$keyword->term}'");
+                    $this->info("  ✓ Collected data for '{$keyword->keyword}'");
                 } catch (\Exception $e) {
                     $this->error("  ✗ Failed: {$e->getMessage()}");
                 }

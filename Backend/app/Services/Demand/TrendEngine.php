@@ -299,7 +299,7 @@ class TrendEngine
     {
         return [
             'id' => $keyword->id,
-            'term' => $keyword->term,
+            'term' => $keyword->keyword,
             'project' => $keyword->project->name ?? 'Unknown',
             'trend_state' => $keyword->trend_state,
             'current_interest' => $keyword->current_interest,

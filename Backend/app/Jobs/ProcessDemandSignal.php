@@ -43,12 +43,12 @@ class ProcessDemandSignal implements ShouldQueue
     {
         Log::info('Processing demand signal', [
             'keyword_id' => $this->keyword->id,
-            'term' => $this->keyword->term,
+            'keyword' => $this->keyword->keyword,
         ]);
 
         // Get measurements
         $measurements = KeywordMeasurement::where('keyword_id', $this->keyword->id)
-            ->orderBy('measured_at', 'desc')
+            ->orderBy('date', 'desc')
             ->limit(90)
             ->get();
 
@@ -105,11 +105,11 @@ class ProcessDemandSignal implements ShouldQueue
             'trend_updated_at' => now(),
         ]);
 
-        // Update latest measurement with growth rate
+        // Update latest measurement with growth rate (column is 'growth', not 'growth_rate')
         $latestMeasurement = $measurements->first();
         if ($latestMeasurement) {
             $latestMeasurement->update([
-                'growth_rate' => $growth7d,
+                'growth' => $growth7d,
             ]);
         }
 
@@ -175,7 +175,7 @@ class ProcessDemandSignal implements ShouldQueue
             ]);
         }
 
-        // If no opportunities exist, consider creating one
+        // Consider creating one
         if ($opportunities->isEmpty() && $this->keyword->trend_state === 'rising') {
             $this->considerCreatingOpportunity();
         }
@@ -186,12 +186,10 @@ class ProcessDemandSignal implements ShouldQueue
      */
     protected function considerCreatingOpportunity(): void
     {
-        // Only create if keyword has sustained growth
         if ($this->keyword->growth_rate_30d < 30) {
             return;
         }
 
-        // Check if opportunity already exists
         $exists = \App\Models\Opportunity::where('project_id', $this->keyword->project_id)
             ->where('keyword_id', $this->keyword->id)
             ->exists();
@@ -200,27 +198,23 @@ class ProcessDemandSignal implements ShouldQueue
             return;
         }
 
-        // Create new opportunity
         $opportunity = \App\Models\Opportunity::create([
-            'organization_id' => $this->keyword->project->organization_id,
-            'project_id' => $this->keyword->project_id,
-            'keyword_id' => $this->keyword->id,
-            'title' => "Rising demand: {$this->keyword->term}",
-            'description' => "Detected rising trend with {$this->keyword->growth_rate_30d}% growth over 30 days.",
-            'status' => 'detected',
-            'priority' => 'high',
-            'opportunity_score' => 0, // Will be calculated by CalculateOpportunity
-            'detected_at' => now(),
+            'organization_id'   => $this->keyword->project->organization_id,
+            'project_id'        => $this->keyword->project_id,
+            'keyword_id'        => $this->keyword->id,
+            'title'             => "Rising demand: {$this->keyword->keyword}",
+            'explanation'       => "Detected rising trend with {$this->keyword->growth_rate_30d}% growth over 30 days.",
+            'status'            => 'detected',
+            'opportunity_score' => 0,
+            'detected_at'       => now(),
         ]);
 
-        // Dispatch scoring job
-        \App\Jobs\CalculateOpportunity::dispatch($opportunity)
-            ->onQueue('scoring');
+        \App\Jobs\CalculateOpportunity::dispatch($opportunity)->onQueue('scoring');
 
         Log::info('Created new opportunity for rising keyword', [
             'opportunity_id' => $opportunity->id,
-            'keyword_id' => $this->keyword->id,
-            'growth_30d' => $this->keyword->growth_rate_30d,
+            'keyword_id'     => $this->keyword->id,
+            'growth_30d'     => $this->keyword->growth_rate_30d,
         ]);
     }
 
@@ -231,8 +225,8 @@ class ProcessDemandSignal implements ShouldQueue
     {
         Log::error('ProcessDemandSignal job failed', [
             'keyword_id' => $this->keyword->id,
-            'term' => $this->keyword->term,
-            'error' => $exception->getMessage(),
+            'keyword'    => $this->keyword->keyword,
+            'error'      => $exception->getMessage(),
         ]);
     }
 }

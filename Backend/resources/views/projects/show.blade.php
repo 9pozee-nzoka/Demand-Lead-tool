@@ -107,7 +107,7 @@
                         @foreach($project->keywords as $keyword)
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4">
-                                <div class="text-sm font-medium text-gray-900">{{ $keyword->term }}</div>
+                                <div class="text-sm font-medium text-gray-900">{{ $keyword->keyword }}</div>
                             </td>
                             <td class="px-6 py-4">
                                 <span class="px-2.5 py-0.5 text-xs font-medium rounded-full {{ $keyword->status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">

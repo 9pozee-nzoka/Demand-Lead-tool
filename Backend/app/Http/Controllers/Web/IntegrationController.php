@@ -1,15 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\DataSource;
-use App\Services\Demand\DataProviderFactory;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class IntegrationController extends Controller
@@ -23,32 +20,43 @@ class IntegrationController extends Controller
         'openai',
     ];
 
-    public function __construct(
-        private readonly DataProviderFactory $factory,
-    ) {}
-
-    // ── CRUD ─────────────────────────────────────────────────────────────────
-
     /**
-     * GET /api/v1/integrations
+     * Display integrations dashboard
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request)
     {
-        $sources = DataSource::where('organization_id', $request->user()->organization_id)
-            ->orderBy('type')
-            ->get()
-            ->map(fn ($s) => $this->safeSource($s));
+        $organizationId = $request->user()->organization_id;
 
-        return response()->json([
-            'data'       => $sources,
-            'available'  => $this->availableProviders(),
-        ]);
+        $sources = DataSource::where('organization_id', $organizationId)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get();
+
+        $availableProviders = $this->getAvailableProviders();
+
+        return view('integrations.index', compact('sources', 'availableProviders'));
     }
 
     /**
-     * POST /api/v1/integrations
+     * Show create integration form
      */
-    public function store(Request $request): JsonResponse
+    public function create(Request $request)
+    {
+        $type = $request->get('type');
+        $availableProviders = $this->getAvailableProviders();
+
+        if ($type && !in_array($type, self::PROVIDER_TYPES)) {
+            return redirect()->route('integrations.index')
+                ->withErrors(['error' => 'Invalid provider type.']);
+        }
+
+        return view('integrations.create', compact('type', 'availableProviders'));
+    }
+
+    /**
+     * Store new integration
+     */
+    public function store(Request $request)
     {
         $data = $request->validate([
             'name'        => ['required', 'string', 'max:255'],
@@ -70,15 +78,58 @@ class IntegrationController extends Controller
 
         AuditLog::record('integration.created', $source, ['type' => $source->type]);
 
-        return response()->json($this->safeSource($source), 201);
+        return redirect()->route('integrations.index')
+            ->with('success', 'Integration created successfully!');
     }
 
     /**
-     * PATCH /api/v1/integrations/{source}
+     * Show integration details
      */
-    public function update(Request $request, DataSource $dataSource): JsonResponse
+    public function show(DataSource $dataSource)
     {
-        $this->authorizeSource($request, $dataSource);
+        $this->authorize($dataSource);
+
+        $keywordCount = \App\Models\Keyword::whereHas('project', 
+            fn ($q) => $q->where('organization_id', $dataSource->organization_id))
+            ->where('status', 'active')
+            ->count();
+
+        $measurementCount = \App\Models\KeywordMeasurement::whereHas('keyword.project',
+            fn ($q) => $q->where('organization_id', $dataSource->organization_id))
+            ->where('source', $dataSource->type)
+            ->where('date', '>=', now()->subDays(30)->format('Y-m-d'))
+            ->count();
+
+        $recentMeasurements = \App\Models\KeywordMeasurement::whereHas('keyword.project',
+            fn ($q) => $q->where('organization_id', $dataSource->organization_id))
+            ->where('source', $dataSource->type)
+            ->with('keyword')
+            ->latest()
+            ->limit(20)
+            ->get();
+
+        return view('integrations.show', compact('dataSource', 'keywordCount', 'measurementCount', 'recentMeasurements'));
+    }
+
+    /**
+     * Show edit form
+     */
+    public function edit(DataSource $dataSource)
+    {
+        $this->authorize($dataSource);
+
+        $availableProviders = $this->getAvailableProviders();
+        $provider = collect($availableProviders)->firstWhere('type', $dataSource->type);
+
+        return view('integrations.edit', compact('dataSource', 'provider'));
+    }
+
+    /**
+     * Update integration
+     */
+    public function update(Request $request, DataSource $dataSource)
+    {
+        $this->authorize($dataSource);
 
         $data = $request->validate([
             'name'        => ['sometimes', 'string', 'max:255'],
@@ -95,31 +146,16 @@ class IntegrationController extends Controller
 
         AuditLog::record('integration.updated', $dataSource, ['type' => $dataSource->type]);
 
-        return response()->json($this->safeSource($dataSource->fresh()));
+        return redirect()->route('integrations.show', $dataSource)
+            ->with('success', 'Integration updated successfully!');
     }
 
     /**
-     * DELETE /api/v1/integrations/{source}
+     * Test connection
      */
-    public function destroy(Request $request, DataSource $dataSource): JsonResponse
+    public function test(Request $request, DataSource $dataSource)
     {
-        $this->authorizeSource($request, $dataSource);
-
-        AuditLog::record('integration.deleted', $dataSource, ['type' => $dataSource->type]);
-        $dataSource->delete();
-
-        return response()->json(['message' => 'Integration removed.']);
-    }
-
-    // ── Test connection ───────────────────────────────────────────────────────
-
-    /**
-     * POST /api/v1/integrations/{source}/test
-     * Performs a lightweight connectivity check for the provider.
-     */
-    public function test(Request $request, DataSource $dataSource): JsonResponse
-    {
-        $this->authorizeSource($request, $dataSource);
+        $this->authorize($dataSource);
 
         $result = match ($dataSource->type) {
             'google_trends'   => $this->testGoogleTrends(),
@@ -138,38 +174,64 @@ class IntegrationController extends Controller
             ]),
         ]);
 
-        return response()->json($result, $result['ok'] ? 200 : 422);
+        if ($result['ok']) {
+            return back()->with('success', $result['message']);
+        } else {
+            return back()->withErrors(['error' => $result['message']]);
+        }
     }
 
-    // ── Usage stats ───────────────────────────────────────────────────────────
+    /**
+     * Pause integration
+     */
+    public function pause(DataSource $dataSource)
+    {
+        $this->authorize($dataSource);
+
+        $dataSource->update(['status' => 'paused']);
+
+        AuditLog::record('integration.paused', $dataSource);
+
+        return back()->with('success', 'Integration paused successfully.');
+    }
 
     /**
-     * GET /api/v1/integrations/{source}/stats
+     * Activate integration
      */
-    public function stats(Request $request, DataSource $dataSource): JsonResponse
+    public function activate(DataSource $dataSource)
     {
-        $this->authorizeSource($request, $dataSource);
+        $this->authorize($dataSource);
 
-        $keywordCount = \App\Models\Keyword::whereHas('project',
-                fn ($q) => $q->where('organization_id', $request->user()->organization_id))
-            ->where('status', 'active')
-            ->count();
+        $dataSource->update(['status' => 'active']);
 
-        $measurementCount = \App\Models\KeywordMeasurement::whereHas('keyword.project',
-                fn ($q) => $q->where('organization_id', $request->user()->organization_id))
-            ->where('source', $dataSource->type)
-            ->where('date', '>=', now()->subDays(30)->format('Y-m-d'))
-            ->count();
+        AuditLog::record('integration.activated', $dataSource);
 
-        return response()->json([
-            'source'           => $this->safeSource($dataSource),
-            'keywords_tracked' => $keywordCount,
-            'measurements_30d' => $measurementCount,
-            'last_sync_at'     => $dataSource->last_sync_at,
-        ]);
+        return back()->with('success', 'Integration activated successfully.');
+    }
+
+    /**
+     * Delete integration
+     */
+    public function destroy(DataSource $dataSource)
+    {
+        $this->authorize($dataSource);
+
+        AuditLog::record('integration.deleted', $dataSource, ['type' => $dataSource->type]);
+
+        $dataSource->delete();
+
+        return redirect()->route('integrations.index')
+            ->with('success', 'Integration deleted successfully.');
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private function authorize(DataSource $source): void
+    {
+        if ((int) $source->organization_id !== (int) auth()->user()->organization_id) {
+            abort(403);
+        }
+    }
 
     private function testGoogleTrends(): array
     {
@@ -255,37 +317,51 @@ class IntegrationController extends Controller
         }
     }
 
-    /** Strip encrypted_credentials from the response */
-    private function safeSource(DataSource $source): array
+    private function getAvailableProviders(): array
     {
         return [
-            'id'           => $source->id,
-            'name'         => $source->name,
-            'type'         => $source->type,
-            'status'       => $source->status,
-            'last_sync_at' => $source->last_sync_at,
-            'sync_meta'    => $source->sync_meta,
-            'has_credentials' => !empty($source->encrypted_credentials),
-            'created_at'   => $source->created_at,
-        ];
-    }
-
-    private function authorizeSource(Request $request, DataSource $source): void
-    {
-        if ((int) $source->organization_id !== (int) $request->user()->organization_id) {
-            abort(403);
-        }
-    }
-
-    private function availableProviders(): array
-    {
-        return [
-            ['type' => 'google_trends',   'label' => 'Google Trends',     'icon' => 'trending_up',   'desc' => 'Public demand signal data. No credentials required.'],
-            ['type' => 'google_ads',       'label' => 'Google Ads',         'icon' => 'ads_click',     'desc' => 'Search volume and CPC data via Google Ads API.'],
-            ['type' => 'search_console',   'label' => 'Search Console',     'icon' => 'manage_search', 'desc' => 'Impressions and click data from Google Search Console.'],
-            ['type' => 'africas_talking',  'label' => "Africa's Talking",   'icon' => 'sms',           'desc' => 'SMS and USSD alerts for the East Africa market.'],
-            ['type' => 'openai',           'label' => 'OpenAI',             'icon' => 'psychology',    'desc' => 'AI-powered intent analysis, clustering, and content generation.'],
-            ['type' => 'webhook',          'label' => 'Outbound Webhook',   'icon' => 'webhook',       'desc' => 'Send opportunity signals to any HTTP endpoint.'],
+            [
+                'type'  => 'google_trends',
+                'label' => 'Google Trends',
+                'icon'  => 'trending_up',
+                'desc'  => 'Public demand signal data. No credentials required.',
+                'color' => 'blue',
+            ],
+            [
+                'type'  => 'google_ads',
+                'label' => 'Google Ads',
+                'icon'  => 'ads_click',
+                'desc'  => 'Search volume and CPC data via Google Ads API.',
+                'color' => 'green',
+            ],
+            [
+                'type'  => 'search_console',
+                'label' => 'Search Console',
+                'icon'  => 'manage_search',
+                'desc'  => 'Impressions and click data from Google Search Console.',
+                'color' => 'yellow',
+            ],
+            [
+                'type'  => 'africas_talking',
+                'label' => "Africa's Talking",
+                'icon'  => 'sms',
+                'desc'  => 'SMS and USSD alerts for the East Africa market.',
+                'color' => 'purple',
+            ],
+            [
+                'type'  => 'openai',
+                'label' => 'OpenAI',
+                'icon'  => 'psychology',
+                'desc'  => 'AI-powered intent analysis, clustering, and content generation.',
+                'color' => 'indigo',
+            ],
+            [
+                'type'  => 'webhook',
+                'label' => 'Outbound Webhook',
+                'icon'  => 'webhook',
+                'desc'  => 'Send opportunity signals to any HTTP endpoint.',
+                'color' => 'gray',
+            ],
         ];
     }
 }

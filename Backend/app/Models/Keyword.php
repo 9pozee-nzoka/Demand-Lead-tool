@@ -71,6 +71,14 @@ class Keyword extends Model
         return $this->hasMany(KeywordMeasurement::class);
     }
 
+    /** Relationship: latest measurement (use as property or eager-load) */
+    public function latestMeasurement(): HasMany
+    {
+        return $this->hasMany(KeywordMeasurement::class)
+                    ->latest('date')
+                    ->limit(1);
+    }
+
     public function clusters(): BelongsToMany
     {
         return $this->belongsToMany(DemandCluster::class, 'cluster_keywords')
@@ -101,8 +109,8 @@ class Keyword extends Model
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** Latest measurement for a given period window (7, 30, 90 days) */
-    public function latestMeasurement(?string $source = null)
+    /** Get the single latest measurement record (eager-loaded via latestMeasurement relation or queried directly) */
+    public function getLatestMeasurementRecord(?string $source = null): ?KeywordMeasurement
     {
         $query = $this->measurements()->latest('date');
         if ($source) {

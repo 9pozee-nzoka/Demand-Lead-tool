@@ -9,7 +9,7 @@
             <svg class="h-4 w-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
-            <a href="{{ route('keywords.show', $keyword) }}" class="hover:text-gray-900">{{ $keyword->term }}</a>
+            <a href="{{ route('keywords.show', $keyword) }}" class="hover:text-gray-900">{{ $keyword->keyword }}</a>
             <svg class="h-4 w-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
@@ -27,11 +27,11 @@
 
             <!-- Keyword Term -->
             <div>
-                <label for="term" class="block text-sm font-medium text-gray-700 mb-2">Keyword *</label>
-                <input type="text" name="term" id="term" value="{{ old('term', $keyword->term) }}" required
+                <label for="keyword" class="block text-sm font-medium text-gray-700 mb-2">Keyword *</label>
+                <input type="text" name="keyword" id="keyword" value="{{ old('keyword', $keyword->keyword) }}" required
                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                     placeholder="e.g., cloud hosting services">
-                @error('term')
+                @error('keyword')
                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                 @enderror
             </div>

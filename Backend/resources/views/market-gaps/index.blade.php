@@ -168,7 +168,7 @@
                                 <tbody class="divide-y divide-gray-200">
                                     @foreach($untappedKeywords as $keyword)
                                     <tr class="hover:bg-gray-50">
-                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $keyword->term }}</td>
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $keyword->keyword }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-600">{{ $keyword->project->name }}</td>
                                         <td class="px-4 py-3">
                                             @php
@@ -229,7 +229,7 @@
                                 <tbody class="divide-y divide-gray-200">
                                     @foreach($coverageGaps as $keyword)
                                     <tr class="hover:bg-gray-50">
-                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $keyword->term }}</td>
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $keyword->keyword }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-600">{{ $keyword->project->name }}</td>
                                         <td class="px-4 py-3 text-right text-sm font-semibold text-gray-900">{{ number_format($keyword->current_interest, 0) }}</td>
                                         <td class="px-4 py-3 text-right text-sm text-gray-600">0</td>

@@ -52,14 +52,14 @@ class SourceEvent extends Model
     /**
      * Scopes
      */
-    public function scopeByType($query, string $type)
-    {
-        return $query->where('event_type', $type);
-    }
-
     public function scopeBySeverity($query, string $severity)
     {
         return $query->where('severity', $severity);
+    }
+
+    public function scopeByEventType($query, string $eventType)
+    {
+        return $query->where('event_type', $eventType);
     }
 
     public function scopeErrors($query)
@@ -67,13 +67,31 @@ class SourceEvent extends Model
         return $query->whereIn('severity', ['error', 'critical']);
     }
 
-    public function scopeCritical($query)
+    public function scopeRecent($query, int $days = 7)
     {
-        return $query->where('severity', 'critical');
+        return $query->where('created_at', '>=', now()->subDays($days));
     }
 
     /**
-     * Static Factory Methods
+     * Helper Methods
+     */
+    public function isError(): bool
+    {
+        return in_array($this->severity, ['error', 'critical']);
+    }
+
+    public function isCritical(): bool
+    {
+        return $this->severity === 'critical';
+    }
+
+    public function isWarning(): bool
+    {
+        return $this->severity === 'warning';
+    }
+
+    /**
+     * Static helpers for logging events
      */
     public static function logSourceCreated(SourceScraper $source, ?User $user = null): self
     {
@@ -82,50 +100,74 @@ class SourceEvent extends Model
             'organization_id' => $source->organization_id,
             'event_type' => 'source_created',
             'severity' => 'info',
-            'message' => "Source '{$source->name}' was created",
+            'message' => "Source '{$source->name}' was created.",
             'user_id' => $user?->id,
         ]);
     }
 
-    public static function logJobStarted(ScrapeJob $job): self
+    public static function logSourceActivated(SourceScraper $source, ?User $user = null): self
     {
         return static::create([
-            'source_scraper_id' => $job->source_scraper_id,
-            'organization_id' => $job->organization_id,
-            'scrape_job_id' => $job->id,
-            'event_type' => 'job_started',
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
+            'event_type' => 'source_activated',
             'severity' => 'info',
-            'message' => 'Scrape job started',
+            'message' => "Source '{$source->name}' was activated.",
+            'user_id' => $user?->id,
         ]);
     }
 
-    public static function logJobCompleted(ScrapeJob $job): self
+    public static function logSourcePaused(SourceScraper $source, ?User $user = null): self
     {
         return static::create([
-            'source_scraper_id' => $job->source_scraper_id,
-            'organization_id' => $job->organization_id,
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
+            'event_type' => 'source_paused',
+            'severity' => 'info',
+            'message' => "Source '{$source->name}' was paused.",
+            'user_id' => $user?->id,
+        ]);
+    }
+
+    public static function logJobStarted(SourceScraper $source, ScrapeJob $job): self
+    {
+        return static::create([
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
+            'scrape_job_id' => $job->id,
+            'event_type' => 'job_started',
+            'severity' => 'info',
+            'message' => "Scrape job #{$job->id} started.",
+        ]);
+    }
+
+    public static function logJobCompleted(SourceScraper $source, ScrapeJob $job): self
+    {
+        return static::create([
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
             'scrape_job_id' => $job->id,
             'event_type' => 'job_completed',
             'severity' => 'info',
-            'message' => "Scrape job completed: {$job->items_new} new items",
+            'message' => "Scrape job #{$job->id} completed. Found: {$job->items_found}, New: {$job->items_new}",
             'metadata' => [
                 'items_found' => $job->items_found,
                 'items_new' => $job->items_new,
                 'items_updated' => $job->items_updated,
-                'duration' => $job->getDuration(),
+                'duration' => $job->duration,
             ],
         ]);
     }
 
-    public static function logJobFailed(ScrapeJob $job, string $error): self
+    public static function logJobFailed(SourceScraper $source, ScrapeJob $job, string $error): self
     {
         return static::create([
-            'source_scraper_id' => $job->source_scraper_id,
-            'organization_id' => $job->organization_id,
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
             'scrape_job_id' => $job->id,
             'event_type' => 'job_failed',
             'severity' => 'error',
-            'message' => "Scrape job failed: {$error}",
+            'message' => "Scrape job #{$job->id} failed: {$error}",
             'metadata' => ['error' => $error],
         ]);
     }
@@ -137,11 +179,8 @@ class SourceEvent extends Model
             'organization_id' => $source->organization_id,
             'event_type' => 'error_threshold_exceeded',
             'severity' => 'critical',
-            'message' => "Source '{$source->name}' has exceeded error threshold ({$source->error_count} errors)",
-            'metadata' => [
-                'error_count' => $source->error_count,
-                'last_error' => $source->last_error,
-            ],
+            'message' => "Source '{$source->name}' has exceeded error threshold ({$source->error_count} errors). Status changed to 'error'.",
+            'metadata' => ['error_count' => $source->error_count],
         ]);
     }
 }

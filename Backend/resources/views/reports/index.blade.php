@@ -256,7 +256,7 @@
                             </div>
                         </td>
                         <td class="px-6 py-4">
-                            <div class="text-sm font-medium text-gray-900">{{ $keyword->term }}</div>
+                            <div class="text-sm font-medium text-gray-900">{{ $keyword->keyword }}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 py-1 text-sm font-semibold bg-green-100 text-green-800 rounded-full">

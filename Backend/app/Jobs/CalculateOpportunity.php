@@ -47,7 +47,7 @@ class CalculateOpportunity implements ShouldQueue
     {
         Log::info('Calculating opportunity score', [
             'opportunity_id' => $this->opportunity->id,
-            'title' => $this->opportunity->title,
+            'title'          => $this->opportunity->title ?? 'N/A',
         ]);
 
         // Calculate score
@@ -57,11 +57,11 @@ class CalculateOpportunity implements ShouldQueue
         $explanation = '';
         if ($aiService->isConfigured()) {
             try {
-                $explanation = $aiService->explainOpportunityScore($result['breakdown']);
+                $explanation = $aiService->explainOpportunityScore($result);
             } catch (\Exception $e) {
                 Log::warning('Failed to generate AI explanation', [
                     'opportunity_id' => $this->opportunity->id,
-                    'error' => $e->getMessage(),
+                    'error'          => $e->getMessage(),
                 ]);
                 $explanation = $this->generateFallbackExplanation($result);
             }
@@ -69,24 +69,26 @@ class CalculateOpportunity implements ShouldQueue
             $explanation = $this->generateFallbackExplanation($result);
         }
 
-        // Update opportunity
+        // Map scoring result to actual DB columns
         $this->opportunity->update([
-            'opportunity_score' => $result['score'],
-            'priority' => $result['priority'],
-            'score_breakdown' => $result['breakdown'],
-            'score_explanation' => $explanation,
-            'scored_at' => now(),
+            'opportunity_score' => $result['opportunity_score'],
+            'growth_score'      => $result['growth_score'],
+            'intent_score'      => $result['intent_score'],
+            'geo_score'         => $result['geo_score'],
+            'volume_score'      => $result['volume_score'],
+            'competition_score' => $result['competition_score'],
+            'historical_score'  => $result['historical_score'],
+            'explanation'       => $explanation,
         ]);
 
         Log::info('Successfully calculated opportunity score', [
             'opportunity_id' => $this->opportunity->id,
-            'score' => $result['score'],
-            'priority' => $result['priority'],
+            'score'          => $result['opportunity_score'],
         ]);
 
-        // Update status if needed
+        // Advance status from detected → reviewed
         if ($this->opportunity->status === 'detected') {
-            $this->opportunity->update(['status' => 'scored']);
+            $this->opportunity->update(['status' => 'reviewed']);
         }
     }
 

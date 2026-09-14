@@ -4,13 +4,13 @@
 <div class="container-fluid px-4 py-4">
     <!-- Header -->
     <div class="mb-4">
-        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-lg p-6">
+        <div class="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl shadow-lg p-6">
             <div class="flex justify-between items-center flex-wrap gap-4">
                 <div class="text-white">
                     <h1 class="text-3xl font-bold mb-2">
                         📊 Analytics Dashboard
                     </h1>
-                    <p class="text-indigo-100">
+                    <p class="text-white opacity-90">
                         {{ $startDate->format('M d, Y') }} - {{ $endDate->format('M d, Y') }}
                     </p>
                 </div>
@@ -18,22 +18,22 @@
                     <!-- Period Selector -->
                     <div class="inline-flex rounded-lg bg-white/20 p-1">
                         <a href="{{ route('analytics.index', ['period' => 7]) }}" 
-                           class="px-4 py-2 rounded-md {{ $period == 7 ? 'bg-white text-indigo-600' : 'text-white hover:bg-white/10' }} transition-all duration-200 font-medium">
+                           class="px-4 py-2 rounded-md {{ $period == 7 ? 'bg-white text-blue-600 font-bold shadow-sm' : 'text-white hover:bg-white/20' }} transition-all duration-200 font-medium">
                             7D
                         </a>
                         <a href="{{ route('analytics.index', ['period' => 30]) }}" 
-                           class="px-4 py-2 rounded-md {{ $period == 30 ? 'bg-white text-indigo-600' : 'text-white hover:bg-white/10' }} transition-all duration-200 font-medium">
+                           class="px-4 py-2 rounded-md {{ $period == 30 ? 'bg-white text-blue-600 font-bold shadow-sm' : 'text-white hover:bg-white/20' }} transition-all duration-200 font-medium">
                             30D
                         </a>
                         <a href="{{ route('analytics.index', ['period' => 90]) }}" 
-                           class="px-4 py-2 rounded-md {{ $period == 90 ? 'bg-white text-indigo-600' : 'text-white hover:bg-white/10' }} transition-all duration-200 font-medium">
+                           class="px-4 py-2 rounded-md {{ $period == 90 ? 'bg-white text-blue-600 font-bold shadow-sm' : 'text-white hover:bg-white/20' }} transition-all duration-200 font-medium">
                             90D
                         </a>
                     </div>
 
                     <!-- Export Dropdown -->
                     <div class="relative group">
-                        <button class="px-4 py-2 bg-white text-indigo-600 rounded-lg font-medium hover:bg-indigo-50 transition-all duration-200 flex items-center gap-2">
+                        <button class="px-4 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-50 shadow-sm transition-all duration-200 flex items-center gap-2">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                             </svg>

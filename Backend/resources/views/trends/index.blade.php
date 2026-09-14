@@ -228,7 +228,7 @@
                             @foreach($trending as $keyword)
                             <div class="flex items-center justify-between">
                                 <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->term }}</div>
+                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->keyword }}</div>
                                     <div class="text-xs text-gray-500">{{ $keyword->project->name }}</div>
                                 </div>
                                 <span class="ml-2 text-sm font-semibold text-green-600">+{{ number_format($keyword->growth_rate_7d, 0) }}%</span>
@@ -248,7 +248,7 @@
                             @foreach($emerging as $keyword)
                             <div class="flex items-center justify-between">
                                 <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->term }}</div>
+                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->keyword }}</div>
                                     <div class="text-xs text-gray-500">{{ $keyword->project->name }}</div>
                                 </div>
                                 <span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">New</span>
@@ -268,7 +268,7 @@
                             @foreach($declining as $keyword)
                             <div class="flex items-center justify-between">
                                 <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->term }}</div>
+                                    <div class="text-sm font-medium text-gray-900 truncate">{{ $keyword->keyword }}</div>
                                     <div class="text-xs text-gray-500">{{ $keyword->project->name }}</div>
                                 </div>
                                 <span class="ml-2 text-sm font-semibold text-red-600">{{ number_format($keyword->growth_rate_7d, 0) }}%</span>

@@ -9,11 +9,11 @@
             <svg class="h-4 w-4 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
-            <span class="text-gray-900">{{ $keyword->term }}</span>
+            <span class="text-gray-900">{{ $keyword->keyword }}</span>
         </div>
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $keyword->term }}</h1>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $keyword->keyword }}</h1>
                 <p class="text-gray-600 mt-1">
                     <a href="{{ route('projects.show', $keyword->project) }}" class="text-blue-600 hover:text-blue-700">
                         {{ $keyword->project->name }}
@@ -34,14 +34,14 @@
         </div>
     </div>
 
-    <!-- Stats Cards -->
+    <!-- Stats Cards — use keyword-level fields, not latestMeasurement columns -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-gray-600 mb-1">Current Interest</p>
                     <p class="text-2xl font-bold text-gray-900">
-                        {{ $keyword->latestMeasurement->interest ?? 0 }}
+                        {{ number_format($keyword->current_interest ?? 0, 0) }}
                     </p>
                 </div>
                 <div class="p-3 bg-blue-100 rounded-lg">
@@ -55,13 +55,14 @@
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-600 mb-1">Growth Rate</p>
-                    <p class="text-2xl font-bold {{ ($keyword->latestMeasurement->growth_rate ?? 0) >= 0 ? 'text-green-600' : 'text-red-600' }}">
-                        {{ number_format($keyword->latestMeasurement->growth_rate ?? 0, 1) }}%
+                    <p class="text-sm text-gray-600 mb-1">7-Day Growth</p>
+                    @php $g = $keyword->growth_rate_7d ?? 0; @endphp
+                    <p class="text-2xl font-bold {{ $g >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                        {{ $g >= 0 ? '+' : '' }}{{ number_format($g, 1) }}%
                     </p>
                 </div>
-                <div class="p-3 {{ ($keyword->latestMeasurement->growth_rate ?? 0) >= 0 ? 'bg-green-100' : 'bg-red-100' }} rounded-lg">
-                    <svg class="h-6 w-6 {{ ($keyword->latestMeasurement->growth_rate ?? 0) >= 0 ? 'text-green-600' : 'text-red-600' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="p-3 {{ $g >= 0 ? 'bg-green-100' : 'bg-red-100' }} rounded-lg">
+                    <svg class="h-6 w-6 {{ $g >= 0 ? 'text-green-600' : 'text-red-600' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
                 </div>
@@ -71,9 +72,10 @@
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-600 mb-1">Search Volume</p>
-                    <p class="text-2xl font-bold text-gray-900">
-                        {{ number_format($keyword->latestMeasurement->search_volume ?? 0) }}
+                    <p class="text-sm text-gray-600 mb-1">30-Day Growth</p>
+                    @php $g30 = $keyword->growth_rate_30d ?? 0; @endphp
+                    <p class="text-2xl font-bold {{ $g30 >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                        {{ $g30 >= 0 ? '+' : '' }}{{ number_format($g30, 1) }}%
                     </p>
                 </div>
                 <div class="p-3 bg-purple-100 rounded-lg">
@@ -104,40 +106,28 @@
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold text-gray-900">📈 Trend Analysis</h2>
             <div class="inline-flex rounded-lg bg-gray-100 p-1">
-                <button onclick="updateChart(7)" 
-                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" 
-                        data-period="7">
-                    7D
-                </button>
-                <button onclick="updateChart(30)" 
-                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" 
-                        data-period="30">
-                    30D
-                </button>
-                <button onclick="updateChart(90)" 
-                        class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn active" 
-                        data-period="90">
-                    90D
-                </button>
+                <button onclick="updateChart(7)"  class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" data-period="7">7D</button>
+                <button onclick="updateChart(30)" class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn" data-period="30">30D</button>
+                <button onclick="updateChart(90)" class="px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200 period-btn active" data-period="90">90D</button>
             </div>
         </div>
-        
+
         @if($measurements->count() > 0)
         <div style="height: 350px;">
             <canvas id="trendChart"></canvas>
         </div>
         <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-blue-50 rounded-lg p-4">
-                <p class="text-xs text-blue-600 font-medium mb-1">7-Day Average</p>
-                <p class="text-2xl font-bold text-blue-700">{{ number_format($stats['avg_7d']) }}</p>
+                <p class="text-xs text-blue-600 font-medium mb-1">7-Day Baseline</p>
+                <p class="text-2xl font-bold text-blue-700">{{ number_format($keyword->baseline_7d ?? 0, 0) }}</p>
             </div>
             <div class="bg-green-50 rounded-lg p-4">
-                <p class="text-xs text-green-600 font-medium mb-1">30-Day Average</p>
-                <p class="text-2xl font-bold text-green-700">{{ number_format($stats['avg_30d']) }}</p>
+                <p class="text-xs text-green-600 font-medium mb-1">30-Day Baseline</p>
+                <p class="text-2xl font-bold text-green-700">{{ number_format($keyword->baseline_30d ?? 0, 0) }}</p>
             </div>
             <div class="bg-purple-50 rounded-lg p-4">
                 <p class="text-xs text-purple-600 font-medium mb-1">Peak Interest</p>
-                <p class="text-2xl font-bold text-purple-700">{{ number_format($stats['peak']) }}</p>
+                <p class="text-2xl font-bold text-purple-700">{{ number_format($stats['peak'] ?? 0) }}</p>
             </div>
         </div>
         @else
@@ -146,8 +136,8 @@
                 <svg class="h-12 w-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                <p class="text-gray-600">No historical data available yet</p>
-                <p class="text-sm text-gray-500 mt-1">Data collection will begin shortly</p>
+                <p class="text-gray-600">No historical data yet</p>
+                <p class="text-sm text-gray-500 mt-1">Run <code class="bg-gray-100 px-1 rounded">php artisan keywords:collect --sync --id={{ $keyword->id }}</code></p>
             </div>
         </div>
         @endif
@@ -163,7 +153,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <span class="text-sm font-medium text-gray-900">{{ $location->country_code }}</span>
+                    <span class="text-sm font-medium text-gray-900">{{ $location->country }}</span>
                 </div>
             @empty
                 <p class="text-gray-600 col-span-full">No locations configured</p>
@@ -173,136 +163,53 @@
 </div>
 
 @if($measurements->count() > 0)
-<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
 <script>
-// Prepare data from backend
 const allData = @json($chartData);
 let currentChart = null;
 
-// Initialize with 90 days
-document.addEventListener('DOMContentLoaded', function() {
-    updateChart(90);
-});
+document.addEventListener('DOMContentLoaded', function() { updateChart(90); });
 
 function updateChart(days) {
-    // Update active button
     document.querySelectorAll('.period-btn').forEach(btn => {
-        if (btn.dataset.period == days) {
-            btn.classList.add('active', 'bg-white', 'text-gray-900', 'shadow-sm');
-            btn.classList.remove('text-gray-600');
-        } else {
-            btn.classList.remove('active', 'bg-white', 'text-gray-900', 'shadow-sm');
-            btn.classList.add('text-gray-600');
-        }
+        const active = btn.dataset.period == days;
+        btn.classList.toggle('bg-white', active);
+        btn.classList.toggle('text-gray-900', active);
+        btn.classList.toggle('shadow-sm', active);
+        btn.classList.toggle('text-gray-600', !active);
     });
 
-    // Filter data
-    const filteredData = allData.slice(-days);
-    
-    // Prepare chart data
-    const chartData = {
-        labels: filteredData.map(d => d.date),
-        datasets: [
-            {
-                label: 'Interest Over Time',
-                data: filteredData.map(d => d.interest),
-                borderColor: 'rgb(59, 130, 246)',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    const data = allData.slice(-days);
+    if (currentChart) currentChart.destroy();
+
+    currentChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.date),
+            datasets: [{
+                label: 'Interest',
+                data: data.map(d => d.interest),
+                borderColor: 'rgb(59,130,246)',
+                backgroundColor: 'rgba(59,130,246,0.1)',
                 fill: true,
                 tension: 0.4,
-                yAxisID: 'y',
-            },
-            {
-                label: 'Search Volume',
-                data: filteredData.map(d => d.volume),
-                borderColor: 'rgb(147, 51, 234)',
-                backgroundColor: 'rgba(147, 51, 234, 0.1)',
+            }, {
+                label: 'Volume',
+                data: data.map(d => d.volume),
+                borderColor: 'rgb(147,51,234)',
+                backgroundColor: 'rgba(147,51,234,0.1)',
                 fill: true,
                 tension: 0.4,
                 yAxisID: 'y1',
-            }
-        ]
-    };
-
-    // Destroy existing chart
-    if (currentChart) {
-        currentChart.destroy();
-    }
-
-    // Create new chart
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    currentChart = new Chart(ctx, {
-        type: 'line',
-        data: chartData,
+            }]
+        },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                    padding: 12,
-                    cornerRadius: 8,
-                    titleFont: {
-                        size: 14,
-                        weight: 'bold'
-                    },
-                    bodyFont: {
-                        size: 13
-                    }
-                }
-            },
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Interest (0-100)',
-                        font: {
-                            weight: 'bold'
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)',
-                    }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Search Volume',
-                        font: {
-                            weight: 'bold'
-                        }
-                    },
-                    grid: {
-                        drawOnChartArea: false,
-                    },
-                },
-                x: {
-                    grid: {
-                        display: false,
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                    }
-                }
+                y:  { type: 'linear', position: 'left',  beginAtZero: true },
+                y1: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
+                x:  { grid: { display: false } }
             }
         }
     });

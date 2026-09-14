@@ -29,11 +29,11 @@ class ScrapeJob extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'metadata' => 'array',
         'items_found' => 'integer',
         'items_new' => 'integer',
         'items_updated' => 'integer',
         'items_failed' => 'integer',
-        'metadata' => 'array',
     ];
 
     /**
@@ -52,11 +52,6 @@ class ScrapeJob extends Model
     public function scrapedItems(): HasMany
     {
         return $this->hasMany(ScrapedItem::class);
-    }
-
-    public function events(): HasMany
-    {
-        return $this->hasMany(SourceEvent::class);
     }
 
     /**
@@ -82,6 +77,11 @@ class ScrapeJob extends Model
         return $query->where('status', 'failed');
     }
 
+    public function scopeRecent($query, int $days = 7)
+    {
+        return $query->where('created_at', '>=', now()->subDays($days));
+    }
+
     /**
      * Helper Methods
      */
@@ -93,16 +93,16 @@ class ScrapeJob extends Model
         ]);
     }
 
-    public function complete(int $found, int $new, int $updated, int $failed = 0): void
+    public function complete(): void
     {
         $this->update([
             'status' => 'completed',
             'completed_at' => now(),
-            'items_found' => $found,
-            'items_new' => $new,
-            'items_updated' => $updated,
-            'items_failed' => $failed,
         ]);
+
+        // Update parent source scraper
+        $this->sourceScraper->recordSuccess();
+        $this->sourceScraper->calculateNextRun();
     }
 
     public function fail(string $errorMessage): void
@@ -112,9 +112,32 @@ class ScrapeJob extends Model
             'completed_at' => now(),
             'error_message' => $errorMessage,
         ]);
+
+        // Update parent source scraper
+        $this->sourceScraper->recordError($errorMessage);
     }
 
-    public function getDuration(): ?int
+    public function incrementFound(int $count = 1): void
+    {
+        $this->increment('items_found', $count);
+    }
+
+    public function incrementNew(int $count = 1): void
+    {
+        $this->increment('items_new', $count);
+    }
+
+    public function incrementUpdated(int $count = 1): void
+    {
+        $this->increment('items_updated', $count);
+    }
+
+    public function incrementFailed(int $count = 1): void
+    {
+        $this->increment('items_failed', $count);
+    }
+
+    public function getDurationAttribute(): ?int
     {
         if ($this->started_at && $this->completed_at) {
             return $this->started_at->diffInSeconds($this->completed_at);
@@ -122,8 +145,18 @@ class ScrapeJob extends Model
         return null;
     }
 
-    public function isSuccessful(): bool
+    public function isCompleted(): bool
     {
-        return $this->status === 'completed' && $this->items_new > 0;
+        return $this->status === 'completed';
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->status === 'failed';
+    }
+
+    public function isRunning(): bool
+    {
+        return $this->status === 'running';
     }
 }

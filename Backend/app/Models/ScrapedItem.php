@@ -40,9 +40,9 @@ class ScrapedItem extends Model
     protected $casts = [
         'published_at' => 'datetime',
         'processed_at' => 'datetime',
-        'relevance_score' => 'decimal:2',
-        'lead_score' => 'decimal:2',
-        'opportunity_score' => 'decimal:2',
+        'relevance_score' => 'float',
+        'lead_score' => 'float',
+        'opportunity_score' => 'float',
         'matched_keywords' => 'array',
         'extracted_entities' => 'array',
         'metadata' => 'array',
@@ -99,14 +99,29 @@ class ScrapedItem extends Model
         return $query->where('processing_status', 'converted');
     }
 
-    public function scopeHighScore($query, float $threshold = 70.0)
+    public function scopeIgnored($query)
     {
-        return $query->where('opportunity_score', '>=', $threshold);
+        return $query->where('processing_status', 'ignored');
     }
 
     public function scopeByIntent($query, string $intent)
     {
         return $query->where('intent', $intent);
+    }
+
+    public function scopeHighOpportunity($query, float $minScore = 70.0)
+    {
+        return $query->where('opportunity_score', '>=', $minScore);
+    }
+
+    public function scopeHighLead($query, float $minScore = 70.0)
+    {
+        return $query->where('lead_score', '>=', $minScore);
+    }
+
+    public function scopeRecent($query, int $days = 7)
+    {
+        return $query->where('created_at', '>=', now()->subDays($days));
     }
 
     /**
@@ -122,17 +137,41 @@ class ScrapedItem extends Model
 
     public function markAsMatched(): void
     {
-        $this->update(['processing_status' => 'matched']);
+        $this->update([
+            'processing_status' => 'matched',
+            'processed_at' => now(),
+        ]);
     }
 
     public function markAsConverted(): void
     {
-        $this->update(['processing_status' => 'converted']);
+        $this->update([
+            'processing_status' => 'converted',
+            'processed_at' => now(),
+        ]);
     }
 
-    public function ignore(): void
+    public function markAsIgnored(): void
     {
-        $this->update(['processing_status' => 'ignored']);
+        $this->update([
+            'processing_status' => 'ignored',
+            'processed_at' => now(),
+        ]);
+    }
+
+    public function isPending(): bool
+    {
+        return $this->processing_status === 'pending';
+    }
+
+    public function isProcessed(): bool
+    {
+        return $this->processing_status === 'processed';
+    }
+
+    public function isConverted(): bool
+    {
+        return $this->processing_status === 'converted';
     }
 
     public function hasHighOpportunityScore(): bool
@@ -145,26 +184,51 @@ class ScrapedItem extends Model
         return $this->lead_score >= 70.0;
     }
 
-    public function isCommercialIntent(): bool
+    public function isTransactional(): bool
     {
-        return in_array($this->intent, ['commercial', 'transactional', 'tender']);
+        return $this->intent === 'transactional' || $this->intent === 'tender';
     }
 
-    public function generateContentHash(): string
+    public function isInformational(): bool
     {
-        $content = $this->title . $this->description . $this->url;
-        return hash('sha256', $content);
+        return $this->intent === 'informational';
     }
 
-    public static function findByContentHash(string $hash): ?self
+    public function convertToOpportunity(): ?Opportunity
     {
-        return static::where('content_hash', $hash)->first();
+        if ($this->opportunity_id) {
+            return $this->opportunity;
+        }
+
+        // This would be handled by a service
+        // Placeholder for now
+        return null;
     }
 
-    public function isDuplicate(): bool
+    public function convertToLead(): ?Lead
     {
-        return static::where('content_hash', $this->content_hash)
-            ->where('id', '!=', $this->id)
-            ->exists();
+        if ($this->lead_id) {
+            return $this->lead;
+        }
+
+        // This would be handled by a service
+        // Placeholder for now
+        return null;
+    }
+
+    /**
+     * Generate content hash for deduplication
+     */
+    public static function generateContentHash(string $content): string
+    {
+        return hash('sha256', trim($content));
+    }
+
+    /**
+     * Check if item already exists
+     */
+    public static function exists(string $contentHash): bool
+    {
+        return static::where('content_hash', $contentHash)->exists();
     }
 }

@@ -263,11 +263,11 @@ function sourcesManager() {
         },
 
         openCreateModal() {
-            alert('Create modal feature coming soon!');
+            window.location.href = '{{ route("sources.create") }}';
         },
 
         viewDetails(source) {
-            alert(`Viewing details for: ${source.name}`);
+            window.location.href = `/sources/${source.id}`;
         },
 
         async runSource(source) {

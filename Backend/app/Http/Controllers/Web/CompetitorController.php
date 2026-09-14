@@ -119,7 +119,7 @@ class CompetitorController extends Controller
         ->take(5)
         ->map(function($k) {
             return [
-                'term' => $k->term,
+                'term' => $k->keyword,
                 'growth' => $k->growth_rate_30d,
                 'state' => $k->trend_state,
                 'interest' => $k->current_interest,
@@ -137,7 +137,7 @@ class CompetitorController extends Controller
         ->take(5)
         ->map(function($k) {
             return [
-                'term' => $k->term,
+                'term' => $k->keyword,
                 'interest' => $k->current_interest,
                 'state' => $k->trend_state,
             ];

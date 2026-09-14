@@ -2,273 +2,147 @@
 
 namespace App\Services\Sources;
 
-use App\Contracts\DataSourceInterface;
 use App\Models\Organization;
-use App\Models\ScrapeJob;
-use App\Models\ScrapedItem;
-use App\Models\SourceEvent;
 use App\Models\SourceScraper;
-use Illuminate\Support\Facades\DB;
+use App\Models\ScrapeJob;
+use App\Models\SourceEvent;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * SourceManager - Orchestrates all data source operations
+ * SourceManager - Orchestrates data source lifecycle
  * 
- * This service manages the lifecycle of data sources:
- * - Registration and configuration
- * - Scheduling and execution
- * - Error handling and recovery
- * - Performance monitoring
+ * Responsibilities:
+ * - Create and configure data sources
+ * - Test connections
+ * - Trigger scraper jobs
+ * - Manage source status
+ * - Collect statistics
  */
 class SourceManager
 {
-    protected array $providers = [];
-
-    /**
-     * Register a data source provider
-     */
-    public function registerProvider(string $type, string $providerClass): void
-    {
-        if (!class_exists($providerClass)) {
-            throw new \InvalidArgumentException("Provider class {$providerClass} does not exist");
-        }
-
-        if (!in_array(DataSourceInterface::class, class_implements($providerClass))) {
-            throw new \InvalidArgumentException("Provider must implement DataSourceInterface");
-        }
-
-        $this->providers[$type] = $providerClass;
-    }
-
-    /**
-     * Get a provider instance for a source type
-     */
-    public function getProvider(string $type): DataSourceInterface
-    {
-        if (!isset($this->providers[$type])) {
-            throw new \InvalidArgumentException("No provider registered for type: {$type}");
-        }
-
-        return app($this->providers[$type]);
-    }
-
+    public function __construct(
+        private ScraperService $scraper
+    ) {}
     /**
      * Create a new data source
      */
     public function createSource(Organization $organization, array $data): SourceScraper
     {
-        $provider = $this->getProvider($data['type']);
+        $source = SourceScraper::create([
+            'organization_id' => $organization->id,
+            'name' => $data['name'],
+            'type' => $data['type'],
+            'category' => $data['category'] ?? $this->inferCategory($data['type']),
+            'base_url' => $data['base_url'] ?? null,
+            'configuration' => $data['configuration'] ?? [],
+            'credentials' => $data['credentials'] ?? null,
+            'schedule' => $data['schedule'] ?? '0 */6 * * *', // Every 6 hours by default
+            'status' => 'active',
+        ]);
 
-        // Validate configuration
-        if (!$provider->validateConfiguration($data['configuration'] ?? [])) {
-            throw new \InvalidArgumentException('Invalid source configuration');
-        }
+        // Calculate next run time
+        $source->calculateNextRun();
 
-        DB::beginTransaction();
-        try {
-            $source = SourceScraper::create([
-                'organization_id' => $organization->id,
-                'name' => $data['name'],
-                'type' => $data['type'],
-                'category' => $provider->getCategory(),
-                'base_url' => $data['base_url'] ?? null,
-                'configuration' => $data['configuration'] ?? [],
-                'credentials' => $data['credentials'] ?? null,
-                'schedule' => $data['schedule'] ?? '0 */6 * * *',
-                'status' => 'active',
-            ]);
+        // Log event
+        SourceEvent::logSourceCreated($source, auth()->user());
 
-            $source->calculateNextRun();
+        Log::info("Data source created", [
+            'source_id' => $source->id,
+            'organization_id' => $organization->id,
+            'type' => $source->type,
+        ]);
 
-            SourceEvent::logSourceCreated($source, auth()->user());
-
-            DB::commit();
-            return $source;
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        return $source;
     }
 
     /**
-     * Test connection to a data source
+     * Update an existing data source
+     */
+    public function updateSource(SourceScraper $source, array $data): SourceScraper
+    {
+        $source->update(array_filter([
+            'name' => $data['name'] ?? null,
+            'base_url' => $data['base_url'] ?? null,
+            'configuration' => $data['configuration'] ?? null,
+            'credentials' => $data['credentials'] ?? null,
+            'schedule' => $data['schedule'] ?? null,
+        ], fn($v) => $v !== null));
+
+        if (isset($data['schedule'])) {
+            $source->calculateNextRun();
+        }
+
+        SourceEvent::create([
+            'source_scraper_id' => $source->id,
+            'organization_id' => $source->organization_id,
+            'event_type' => 'configuration_changed',
+            'severity' => 'info',
+            'message' => "Source '{$source->name}' configuration was updated.",
+            'user_id' => auth()->id(),
+        ]);
+
+        return $source->fresh();
+    }
+
+    /**
+     * Test source connection
      */
     public function testSource(SourceScraper $source): array
     {
-        $provider = $this->getProvider($source->type);
-        return $provider->testConnection($source);
+        try {
+            $result = match ($source->type) {
+                'rss' => $this->testRss($source),
+                'api' => $this->testApi($source),
+                'webhook' => $this->testWebhook($source),
+                'tender' => $this->testTender($source),
+                'scraper' => $this->testScraper($source),
+                default => ['success' => false, 'message' => 'Unknown source type'],
+            };
+
+            if ($result['success']) {
+                $source->update([
+                    'status' => 'active',
+                    'error_count' => 0,
+                    'last_error' => null,
+                ]);
+            }
+
+            return $result;
+
+        } catch (\Throwable $e) {
+            Log::error("Source test failed", [
+                'source_id' => $source->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
-     * Execute a single source scrape job
+     * Run a source scrape job manually
      */
     public function runSource(SourceScraper $source): ScrapeJob
     {
         if (!$source->isActive()) {
-            throw new \RuntimeException("Source is not active");
+            throw new \Exception("Cannot run inactive source");
         }
 
-        $provider = $this->getProvider($source->type);
+        // Execute the scrape
+        $job = $this->scraper->scrape($source);
 
-        // Create job record
-        $job = ScrapeJob::create([
-            'source_scraper_id' => $source->id,
-            'organization_id' => $source->organization_id,
-            'status' => 'pending',
+        Log::info("Source scrape completed", [
+            'source_id' => $source->id,
+            'job_id' => $job->id,
+            'items_found' => $job->items_found,
+            'items_new' => $job->items_new,
         ]);
 
-        SourceEvent::logJobStarted($job);
-        $job->start();
-
-        try {
-            // Fetch raw data
-            $rawItems = $provider->fetch($source, $job);
-            
-            $found = count($rawItems);
-            $new = 0;
-            $updated = 0;
-            $failed = 0;
-
-            // Process each item
-            foreach ($rawItems as $rawItem) {
-                try {
-                    // Parse and normalize
-                    $parsed = $provider->parse($rawItem, $source);
-                    $normalized = $provider->normalize($parsed);
-
-                    // Check for duplicates
-                    $existing = ScrapedItem::findByContentHash($normalized['content_hash']);
-
-                    if ($existing) {
-                        // Update existing item
-                        $existing->update($normalized);
-                        $updated++;
-                    } else {
-                        // Create new item
-                        ScrapedItem::create(array_merge($normalized, [
-                            'source_scraper_id' => $source->id,
-                            'scrape_job_id' => $job->id,
-                            'organization_id' => $source->organization_id,
-                        ]));
-                        $new++;
-                    }
-                } catch (\Throwable $e) {
-                    Log::error("Failed to process scraped item", [
-                        'source_id' => $source->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $failed++;
-                }
-            }
-
-            // Mark job as complete
-            $job->complete($found, $new, $updated, $failed);
-            $source->recordSuccess();
-            $source->calculateNextRun();
-
-            SourceEvent::logJobCompleted($job);
-            $provider->afterFetch($source, $job);
-
-            // Dispatch intent classification for new items (starts AI intelligence pipeline)
-            if ($new > 0) {
-                // Get newly created items for this job
-                $newItems = ScrapedItem::where('scrape_job_id', $job->id)
-                    ->where('processing_status', 'pending')
-                    ->get();
-
-                foreach ($newItems as $item) {
-                    \App\Jobs\ProcessIntentClassification::dispatch($item);
-                }
-            }
-
-            return $job;
-        } catch (\Throwable $e) {
-            $provider->handleError($source, $job, $e);
-            throw $e;
-        }
-    }
-
-    /**
-     * Run all sources that are due for execution
-     */
-    public function runScheduledSources(): array
-    {
-        $sources = SourceScraper::dueForRun()->get();
-        $results = [];
-
-        foreach ($sources as $source) {
-            try {
-                $job = $this->runSource($source);
-                $results[] = [
-                    'source_id' => $source->id,
-                    'success' => true,
-                    'job_id' => $job->id,
-                    'items_new' => $job->items_new,
-                ];
-            } catch (\Throwable $e) {
-                $results[] = [
-                    'source_id' => $source->id,
-                    'success' => false,
-                    'error' => $e->getMessage(),
-                ];
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * Update source configuration
-     */
-    public function updateSource(SourceScraper $source, array $data): SourceScraper
-    {
-        $provider = $this->getProvider($source->type);
-
-        // If configuration is being updated, validate it
-        if (isset($data['configuration'])) {
-            if (!$provider->validateConfiguration($data['configuration'])) {
-                throw new \InvalidArgumentException('Invalid source configuration');
-            }
-        }
-
-        DB::beginTransaction();
-        try {
-            $source->update($data);
-
-            if (isset($data['configuration']) || isset($data['credentials'])) {
-                SourceEvent::create([
-                    'source_scraper_id' => $source->id,
-                    'organization_id' => $source->organization_id,
-                    'event_type' => 'configuration_changed',
-                    'severity' => 'info',
-                    'message' => "Source configuration updated",
-                    'user_id' => auth()->id(),
-                ]);
-            }
-
-            DB::commit();
-            return $source->fresh();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
-    }
-
-    /**
-     * Pause a source
-     */
-    public function pauseSource(SourceScraper $source): void
-    {
-        $source->pause();
-        
-        SourceEvent::create([
-            'source_scraper_id' => $source->id,
-            'organization_id' => $source->organization_id,
-            'event_type' => 'source_paused',
-            'severity' => 'info',
-            'message' => "Source paused",
-            'user_id' => auth()->id(),
-        ]);
+        return $job;
     }
 
     /**
@@ -279,48 +153,38 @@ class SourceManager
         $source->activate();
         $source->calculateNextRun();
         
-        SourceEvent::create([
-            'source_scraper_id' => $source->id,
-            'organization_id' => $source->organization_id,
-            'event_type' => 'source_activated',
-            'severity' => 'info',
-            'message' => "Source activated",
-            'user_id' => auth()->id(),
-        ]);
+        SourceEvent::logSourceActivated($source, auth()->user());
     }
 
     /**
-     * Disable a source
+     * Pause a source
      */
-    public function disableSource(SourceScraper $source): void
+    public function pauseSource(SourceScraper $source): void
     {
-        $source->disable();
+        $source->pause();
         
+        SourceEvent::logSourcePaused($source, auth()->user());
+    }
+
+    /**
+     * Delete a source
+     */
+    public function deleteSource(SourceScraper $source): void
+    {
         SourceEvent::create([
             'source_scraper_id' => $source->id,
             'organization_id' => $source->organization_id,
             'event_type' => 'source_disabled',
             'severity' => 'warning',
-            'message' => "Source disabled",
+            'message' => "Source '{$source->name}' was deleted.",
             'user_id' => auth()->id(),
         ]);
-    }
 
-    /**
-     * Delete a source and all its data
-     */
-    public function deleteSource(SourceScraper $source): void
-    {
-        DB::beginTransaction();
-        try {
-            // Soft delete will cascade due to relationships
-            $source->delete();
-            
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        $source->delete();
+
+        Log::info("Source deleted", [
+            'source_id' => $source->id,
+        ]);
     }
 
     /**
@@ -328,57 +192,194 @@ class SourceManager
      */
     public function getSourceStats(SourceScraper $source): array
     {
-        $jobs = $source->scrapeJobs();
-        
         return [
-            'total_jobs' => $jobs->count(),
-            'successful_jobs' => $jobs->completed()->count(),
-            'failed_jobs' => $jobs->failed()->count(),
+            'total_jobs' => $source->scrapeJobs()->count(),
+            'successful_jobs' => $source->scrapeJobs()->completed()->count(),
+            'failed_jobs' => $source->scrapeJobs()->failed()->count(),
             'total_items' => $source->scrapedItems()->count(),
             'pending_items' => $source->scrapedItems()->pending()->count(),
-            'converted_items' => $source->scrapedItems()->converted()->count(),
+            'converted_leads' => $source->scrapedItems()->whereNotNull('lead_id')->count(),
+            'converted_opportunities' => $source->scrapedItems()->whereNotNull('opportunity_id')->count(),
             'last_run' => $source->last_run_at,
             'next_run' => $source->next_run_at,
-            'error_count' => $source->error_count,
-            'success_count' => $source->success_count,
-            'uptime_percentage' => $this->calculateUptime($source),
+            'success_rate' => $source->success_count > 0 
+                ? round(($source->success_count / ($source->success_count + $source->error_count)) * 100, 1)
+                : 0,
         ];
     }
 
     /**
-     * Calculate source uptime percentage
-     */
-    protected function calculateUptime(SourceScraper $source): float
-    {
-        $totalJobs = $source->scrapeJobs()->count();
-        
-        if ($totalJobs === 0) {
-            return 100.0;
-        }
-
-        $successfulJobs = $source->scrapeJobs()->completed()->count();
-        return round(($successfulJobs / $totalJobs) * 100, 2);
-    }
-
-    /**
-     * Get all registered provider types
+     * Get available provider types
      */
     public function getAvailableProviders(): array
     {
-        return array_keys($this->providers);
+        return [
+            [
+                'type' => 'rss',
+                'label' => 'RSS Feed',
+                'category' => 'news',
+                'description' => 'Monitor news feeds, blogs, and industry publications',
+                'icon' => '📰',
+            ],
+            [
+                'type' => 'tender',
+                'label' => 'Tender/RFP Portal',
+                'category' => 'tender',
+                'description' => 'Track public procurement and tender opportunities',
+                'icon' => '📋',
+            ],
+            [
+                'type' => 'api',
+                'label' => 'API Integration',
+                'category' => 'market_data',
+                'description' => 'Connect to third-party APIs for market data',
+                'icon' => '🔌',
+            ],
+            [
+                'type' => 'scraper',
+                'label' => 'Web Scraper',
+                'category' => 'lead_capture',
+                'description' => 'Extract data from websites and directories',
+                'icon' => '🕷️',
+            ],
+            [
+                'type' => 'webhook',
+                'label' => 'Webhook Receiver',
+                'category' => 'lead_capture',
+                'description' => 'Receive data from external systems via webhooks',
+                'icon' => '📥',
+            ],
+        ];
     }
 
-    /**
-     * Get provider metadata
-     */
-    public function getProviderMetadata(string $type): array
+    // ── Private Helper Methods ────────────────────────────────────────────────
+
+    private function inferCategory(string $type): string
     {
-        $provider = $this->getProvider($type);
-        
+        return match ($type) {
+            'rss' => 'news',
+            'tender' => 'tender',
+            'api' => 'market_data',
+            'scraper', 'webhook' => 'lead_capture',
+            default => 'market_data',
+        };
+    }
+
+    private function testRss(SourceScraper $source): array
+    {
+        if (!$source->base_url) {
+            return ['success' => false, 'message' => 'No RSS feed URL configured'];
+        }
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders(['User-Agent' => 'DemandLead/1.0'])
+                ->get($source->base_url);
+
+            if (!$response->successful()) {
+                return ['success' => false, 'message' => "RSS feed returned HTTP {$response->status()}"];
+            }
+
+            $xml = simplexml_load_string($response->body());
+            if (!$xml) {
+                return ['success' => false, 'message' => 'Invalid RSS feed format'];
+            }
+
+            $itemCount = count($xml->channel->item ?? []);
+            return [
+                'success' => true,
+                'message' => "RSS feed is valid. Found {$itemCount} items.",
+            ];
+
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function testApi(SourceScraper $source): array
+    {
+        if (!$source->base_url) {
+            return ['success' => false, 'message' => 'No API URL configured'];
+        }
+
+        try {
+            $headers = [];
+            if ($source->credentials) {
+                $creds = json_decode($source->credentials, true);
+                if (isset($creds['api_key'])) {
+                    $headers['Authorization'] = 'Bearer ' . $creds['api_key'];
+                }
+            }
+
+            $response = Http::timeout(10)
+                ->withHeaders($headers)
+                ->get($source->base_url);
+
+            return [
+                'success' => $response->successful(),
+                'message' => $response->successful() 
+                    ? 'API connection successful' 
+                    : "API returned HTTP {$response->status()}",
+            ];
+
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function testWebhook(SourceScraper $source): array
+    {
+        // Webhook sources don't have a testable connection
+        // They just receive data
         return [
-            'type' => $provider->getType(),
-            'category' => $provider->getCategory(),
-            'default_configuration' => $provider->getDefaultConfiguration(),
+            'success' => true,
+            'message' => 'Webhook receiver is ready. Send POST requests to your webhook URL.',
         ];
+    }
+
+    private function testTender(SourceScraper $source): array
+    {
+        if (!$source->base_url) {
+            return ['success' => false, 'message' => 'No tender portal URL configured'];
+        }
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders(['User-Agent' => 'DemandLead/1.0'])
+                ->get($source->base_url);
+
+            return [
+                'success' => $response->successful(),
+                'message' => $response->successful()
+                    ? 'Tender portal is accessible'
+                    : "Tender portal returned HTTP {$response->status()}",
+            ];
+
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function testScraper(SourceScraper $source): array
+    {
+        if (!$source->base_url) {
+            return ['success' => false, 'message' => 'No target URL configured'];
+        }
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders(['User-Agent' => 'DemandLead/1.0'])
+                ->get($source->base_url);
+
+            return [
+                'success' => $response->successful(),
+                'message' => $response->successful()
+                    ? 'Target website is accessible'
+                    : "Website returned HTTP {$response->status()}",
+            ];
+
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

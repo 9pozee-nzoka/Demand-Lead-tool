@@ -116,7 +116,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/alerts/read-all', [AlertController::class, 'markAllAsRead'])->name('alerts.read-all');
 
     // Integrations
-    Route::get('/integrations', function() { return view('integrations.index'); })->name('integrations.index');
+    Route::prefix('integrations')->name('integrations.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Web\IntegrationController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Web\IntegrationController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Web\IntegrationController::class, 'store'])->name('store');
+        Route::get('/{dataSource}', [\App\Http\Controllers\Web\IntegrationController::class, 'show'])->name('show');
+        Route::get('/{dataSource}/edit', [\App\Http\Controllers\Web\IntegrationController::class, 'edit'])->name('edit');
+        Route::patch('/{dataSource}', [\App\Http\Controllers\Web\IntegrationController::class, 'update'])->name('update');
+        Route::delete('/{dataSource}', [\App\Http\Controllers\Web\IntegrationController::class, 'destroy'])->name('destroy');
+        Route::post('/{dataSource}/test', [\App\Http\Controllers\Web\IntegrationController::class, 'test'])->name('test');
+        Route::post('/{dataSource}/pause', [\App\Http\Controllers\Web\IntegrationController::class, 'pause'])->name('pause');
+        Route::post('/{dataSource}/activate', [\App\Http\Controllers\Web\IntegrationController::class, 'activate'])->name('activate');
+    });
 
     // WhatsApp Integration
     Route::prefix('integrations/whatsapp')->name('whatsapp.')->group(function () {

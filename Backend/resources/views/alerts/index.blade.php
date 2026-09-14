@@ -79,8 +79,8 @@
                                                 'opportunity_detected' => 'bg-purple-100 text-purple-800',
                                             ];
                                         @endphp
-                                        <span class="px-2 py-1 text-xs font-semibold rounded {{ $typeColors[$alert->alert_type] ?? 'bg-gray-100 text-gray-800' }}">
-                                            {{ ucwords(str_replace('_', ' ', $alert->alert_type)) }}
+                                        <span class="px-2 py-1 text-xs font-semibold rounded {{ $typeColors[$alert->type] ?? 'bg-gray-100 text-gray-800' }}">
+                                            {{ ucwords(str_replace('_', ' ', $alert->type)) }}
                                         </span>
                                         
                                         @if($alert->status !== 'read')
@@ -90,25 +90,17 @@
                                         <span class="text-xs text-gray-500">{{ $alert->created_at->diffForHumans() }}</span>
                                     </div>
 
-                                    <h4 class="text-base font-semibold text-gray-900 mb-1">{{ $alert->title }}</h4>
+                                    <h4 class="text-base font-semibold text-gray-900 mb-1">
+                                        {{ ucwords(str_replace('_', ' ', $alert->type)) }} Alert
+                                    </h4>
                                     <p class="text-sm text-gray-600 mb-3">{{ $alert->message }}</p>
 
-                                    @if($alert->keyword)
+                                    @if($alert->opportunity)
                                     <div class="flex items-center gap-4 text-sm">
                                         <span class="text-gray-600">
-                                            <strong>Keyword:</strong> {{ $alert->keyword->term }}
+                                            <strong>Opportunity:</strong> {{ $alert->opportunity->title }}
+                                            (Score: {{ number_format($alert->opportunity->opportunity_score, 0) }})
                                         </span>
-                                        @if($alert->keyword->growth_rate_7d)
-                                        <span class="text-green-600">
-                                            <strong>Growth:</strong> +{{ number_format($alert->keyword->growth_rate_7d, 1) }}%
-                                        </span>
-                                        @endif
-                                    </div>
-                                    @endif
-
-                                    @if($alert->opportunity)
-                                    <div class="mt-2 text-sm text-gray-600">
-                                        <strong>Opportunity:</strong> {{ $alert->opportunity->title }} (Score: {{ number_format($alert->opportunity->opportunity_score, 0) }})
                                     </div>
                                     @endif
 
@@ -117,9 +109,9 @@
                                         <a href="{{ route('opportunities.show', $alert->opportunity_id) }}" class="text-sm text-purple-600 hover:text-purple-700 font-medium">
                                             View Opportunity →
                                         </a>
-                                        @elseif($alert->keyword_id)
-                                        <a href="{{ route('keywords.show', $alert->keyword_id) }}" class="text-sm text-purple-600 hover:text-purple-700 font-medium">
-                                            View Keyword →
+                                        @elseif($alert->lead_id)
+                                        <a href="{{ route('leads.show', $alert->lead_id) }}" class="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                                            View Lead →
                                         </a>
                                         @endif
 
@@ -137,13 +129,14 @@
                                 <div class="ml-4 text-right">
                                     @php
                                         $statusColors = [
-                                            'sent' => 'bg-green-100 text-green-800',
-                                            'partial' => 'bg-yellow-100 text-yellow-800',
-                                            'failed' => 'bg-red-100 text-red-800',
+                                            'sent'    => 'bg-green-100 text-green-800',
+                                            'pending' => 'bg-yellow-100 text-yellow-800',
+                                            'failed'  => 'bg-red-100 text-red-800',
+                                            'read'    => 'bg-gray-100 text-gray-800',
                                         ];
                                     @endphp
-                                    <span class="px-2 py-1 text-xs font-medium rounded {{ $statusColors[$alert->delivery_status] ?? 'bg-gray-100 text-gray-800' }}">
-                                        {{ ucfirst($alert->delivery_status) }}
+                                    <span class="px-2 py-1 text-xs font-medium rounded {{ $statusColors[$alert->status] ?? 'bg-gray-100 text-gray-800' }}">
+                                        {{ ucfirst($alert->status) }}
                                     </span>
                                 </div>
                             </div>
