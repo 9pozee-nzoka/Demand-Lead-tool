@@ -58,7 +58,9 @@ class KeywordController extends Controller
         // Create keyword
         $keyword = Keyword::create([
             'project_id' => $validated['project_id'],
-            'term' => $validated['term'],
+            'keyword' => $validated['term'],  // Original field
+            'term' => $validated['term'],     // Alias field
+            'normalized_keyword' => strtolower(trim($validated['term'])),
             'match_type' => $validated['match_type'],
             'priority' => $validated['priority'],
             'notes' => $validated['notes'] ?? null,
