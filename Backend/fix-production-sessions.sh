@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Production Session Fix Script for DemandLead
-# Run this on production server to fix login/session issues
+# Run this from the Backend directory: bash fix-production-sessions.sh
 
 set -e
 
@@ -16,8 +16,17 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Change to project directory
-cd /var/www/Demand-Lead-tool/Backend || exit 1
+# Check if we're in the right directory
+if [ ! -f "artisan" ]; then
+    echo -e "${RED}ERROR: artisan file not found!${NC}"
+    echo "Please run this script from the Backend directory:"
+    echo "  cd ~/soarcorp/Demand-Lead-tool/Backend"
+    echo "  bash fix-production-sessions.sh"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Running from Backend directory${NC}"
+echo ""
 
 echo "Step 1: Checking current configuration..."
 echo ""
