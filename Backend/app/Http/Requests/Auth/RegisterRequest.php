@@ -16,8 +16,8 @@ class RegisterRequest extends FormRequest
         return [
             // Organization
             'organization_name' => ['required', 'string', 'max:255'],
-            'industry'          => ['nullable', 'string', 'max:100'],
-            'country'           => ['nullable', 'string', 'size:2'],
+            'industry'          => ['required', 'string', 'max:100'],
+            'country'           => ['required', 'string', 'max:100'],  // Allow "other" and country codes
             'timezone'          => ['nullable', 'string', 'max:60'],
 
             // Owner user

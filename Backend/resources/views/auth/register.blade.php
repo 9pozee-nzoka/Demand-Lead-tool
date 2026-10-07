@@ -10,10 +10,8 @@
     <div class="w-full max-w-2xl">
         <!-- Logo & Welcome -->
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl mb-4 shadow-lg">
-                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                </svg>
+            <div class="inline-flex items-center justify-center mb-4">
+                <img src="{{ asset('images/logo/soarlogo.png') }}" alt="DemandLead" class="h-16 w-auto">
             </div>
             <h1 class="text-3xl font-bold text-gray-900 mb-2">Start your free trial</h1>
             <p class="text-gray-600">Discover rising demand, capture leads, close deals</p>
