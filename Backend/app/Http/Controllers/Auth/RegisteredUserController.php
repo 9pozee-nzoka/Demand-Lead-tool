@@ -33,7 +33,7 @@ class RegisteredUserController extends Controller
         $request->validate([
             'organization_name' => ['required', 'string', 'max:255'],
             'industry' => ['required', 'string', 'max:100'],
-            'country' => ['required', 'string', 'max:2'],
+            'country' => ['required', 'string', 'max:100'],  // Allow "other" option
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
@@ -53,6 +53,7 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'owner',
+            'email_verified_at' => now(),  // Auto-verify for B2B SaaS
         ]);
 
         event(new Registered($user));
