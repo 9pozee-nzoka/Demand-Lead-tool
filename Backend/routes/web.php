@@ -181,11 +181,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 require __DIR__.'/auth.php';
 
-// Debug routes (remove after fixing)
-if (file_exists(__DIR__.'/debug.php')) {
-    require __DIR__.'/debug.php';
-}
-
 // Super Admin Panel
 Route::prefix('super-admin')->middleware(['auth', App\Http\Middleware\EnsureSuperAdmin::class])->name('admin.')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\Web\AdminDashboardController::class, 'index'])->name('dashboard');
