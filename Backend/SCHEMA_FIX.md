@@ -25,7 +25,7 @@ Adds:
 ### 2. Fixed Web Controller
 **File:** `app/Http/Controllers/Web/KeywordController.php`
 
-Changed `keyword_locations` creation from:
+**Issue 1:** Changed `keyword_locations` creation from:
 ```php
 'location' => strtoupper($location),  // ❌ Wrong field
 ```
@@ -35,6 +35,15 @@ To:
 'country' => strtoupper($location),   // ✅ Correct field
 'type' => 'country',
 ```
+
+**Issue 2:** Now populates BOTH `keyword` and `term` fields:
+```php
+'keyword' => $validated['term'],           // ✅ Original field (NOT NULL)
+'term' => $validated['term'],              // ✅ Alias field (nullable)
+'normalized_keyword' => strtolower(trim($validated['term'])),  // ✅ For search
+```
+
+The `keyword` field is NOT NULL in the database, so we must populate it even though we're transitioning to `term`.
 
 ## Production Deployment
 
