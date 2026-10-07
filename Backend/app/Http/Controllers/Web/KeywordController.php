@@ -69,7 +69,8 @@ class KeywordController extends Controller
         foreach ($locationCodes as $location) {
             if (!empty($location)) {
                 $keyword->locations()->create([
-                    'location' => strtoupper($location),
+                    'country' => strtoupper($location),
+                    'type' => 'country',
                 ]);
             }
         }
