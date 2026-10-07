@@ -7,9 +7,44 @@ This is because production hasn't pulled the latest code with schema fixes yet.
 
 ---
 
-## Run These Commands on Production Server
+### Update Database Credentials in .env
 
-SSH into production and run:
+⚠️ **CRITICAL:** The cached config has wrong credentials!
+
+```bash
+# Edit .env file
+nano .env
+```
+
+**Update these lines:**
+```bash
+DB_CONNECTION=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_DATABASE=mweelacr_soarcorp
+DB_USERNAME=mweelacr_pauljohns730
+DB_PASSWORD=Pozee@52683542
+```
+
+**Save:** `Ctrl+X`, then `Y`, then `Enter`
+
+### Clear Config Cache (CRITICAL)
+
+```bash
+# Clear the cached config with wrong credentials
+php artisan config:clear
+rm -rf bootstrap/cache/config.php
+
+# Test database connection
+php artisan tinker --execute="
+try {
+    DB::connection()->getPdo();
+    echo 'Database: Connected Successfully!';
+} catch (Exception \$e) {
+    echo 'Database Error: ' . \$e->getMessage();
+}
+"
+```
 
 ```bash
 # Navigate to project
