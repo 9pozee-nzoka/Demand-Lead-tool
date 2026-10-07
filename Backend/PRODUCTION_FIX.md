@@ -50,21 +50,24 @@ php artisan cache:clear
 php artisan route:clear
 php artisan view:clear
 
-# 4. Fix session directory permissions (CRITICAL for file driver)
+# 4. Run new migrations (adds missing columns)
+php artisan migrate --force
+
+# 5. Fix session directory permissions (CRITICAL for file driver)
 chmod -R 775 storage/framework/sessions
 mkdir -p storage/framework/sessions
 chown -R $(whoami):$(whoami) storage/framework/sessions
 
-# 5. Clear old sessions
+# 6. Clear old sessions
 rm -rf storage/framework/sessions/*
 
-# 6. Cache config
+# 7. Cache config
 php artisan config:cache
 
-# 7. Fix all storage permissions
+# 8. Fix all storage permissions
 chmod -R 775 storage bootstrap/cache
 
-# 8. Restart PHP-FPM
+# 9. Restart PHP-FPM
 sudo systemctl restart php-fpm
 ```
 

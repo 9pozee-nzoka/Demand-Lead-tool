@@ -8,6 +8,9 @@
 ```bash
 cd ~/soarcorp/Demand-Lead-tool/Backend
 
+# Pull latest fixes
+git pull origin main
+
 # Check latest errors
 tail -50 storage/logs/laravel.log
 
