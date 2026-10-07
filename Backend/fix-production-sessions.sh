@@ -107,9 +107,22 @@ echo -e "${GREEN}✓ Config cached${NC}"
 echo ""
 
 echo "Step 6: Fixing permissions..."
+
+# Detect web server user
+if id "www-data" &>/dev/null; then
+    WEB_USER="www-data"
+elif id "apache" &>/dev/null; then
+    WEB_USER="apache"
+elif id "nginx" &>/dev/null; then
+    WEB_USER="nginx"
+else
+    WEB_USER=$(whoami)
+    echo -e "${YELLOW}⚠ Using current user: $WEB_USER${NC}"
+fi
+
 chmod -R 775 storage bootstrap/cache
-chown -R www-data:www-data storage bootstrap/cache
-echo -e "${GREEN}✓ Permissions fixed${NC}"
+chown -R $WEB_USER:$WEB_USER storage bootstrap/cache
+echo -e "${GREEN}✓ Permissions fixed (owner: $WEB_USER)${NC}"
 echo ""
 
 echo "Step 7: Clearing old sessions..."
