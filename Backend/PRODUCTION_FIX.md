@@ -25,7 +25,7 @@ nano .env
 
 ```bash
 # Critical Session Settings
-SESSION_DRIVER=database
+SESSION_DRIVER=file               # OR database (both work)
 SESSION_SECURE_COOKIE=true
 SESSION_ENCRYPT=false
 SESSION_DOMAIN=
@@ -50,22 +50,21 @@ php artisan cache:clear
 php artisan route:clear
 php artisan view:clear
 
-# 4. Run migrations (ensure sessions table exists)
-php artisan migrate --force
+# 4. Fix session directory permissions (CRITICAL for file driver)
+chmod -R 775 storage/framework/sessions
+mkdir -p storage/framework/sessions
+chown -R $(whoami):$(whoami) storage/framework/sessions
 
-# 5. Check if sessions table exists
-php artisan tinker --execute="echo Schema::hasTable('sessions') ? 'EXISTS' : 'MISSING';"
+# 5. Clear old sessions
+rm -rf storage/framework/sessions/*
 
-# 6. Clear old sessions
-php artisan tinker --execute="DB::table('sessions')->truncate();"
-
-# 7. Cache config
+# 6. Cache config
 php artisan config:cache
 
-# 8. Fix permissions
+# 7. Fix all storage permissions
 chmod -R 775 storage bootstrap/cache
 
-# 9. Restart PHP-FPM
+# 8. Restart PHP-FPM
 sudo systemctl restart php-fpm
 ```
 
@@ -80,11 +79,18 @@ sudo systemctl restart php-fpm
 
 ```bash
 php artisan tinker
->>> config('session.driver')        # Should be: "database"
+>>> config('session.driver')        # Should be: "file"
 >>> config('session.secure')        # Should be: true
 >>> config('session.encrypt')       # Should be: false
 >>> config('session.domain')        # Should be: null
+>>> config('session.path')          # Should be: "/"
 >>> exit
+```
+
+**Check session directory:**
+```bash
+ls -la storage/framework/sessions/
+# Should be writable (drwxrwxr-x)
 ```
 
 ## If Still Not Working
